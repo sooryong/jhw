@@ -26,8 +26,8 @@ interface AuthProviderProps {
 }
 
 // LocalStorage 키
-const USER_CACHE_KEY = 'jws_user_cache';
-const USER_CACHE_TIME_KEY = 'jws_user_cache_time';
+const USER_CACHE_KEY = 'jhw_user_cache';
+const USER_CACHE_TIME_KEY = 'jhw_user_cache_time';
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // LocalStorage에서 캐시된 user 읽기 (즉시 로딩)
@@ -138,7 +138,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // 휴대폰번호를 이메일 형식으로 변환
       const normalizedPhone = phoneNumber.replace(/[^0-9]/g, '');
-      const email = `${normalizedPhone}@jws.local`;
+      const email = `${normalizedPhone}@jhw.local`;
 
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
