@@ -27,7 +27,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-export const functions = getFunctions(app, 'us-central1'); // US Central region
+export const functions = getFunctions(app, 'asia-northeast3'); // Seoul region
 
 // Firebase 초기화 상태 확인 완료
 

@@ -200,7 +200,7 @@ export const createUser = async (userData: Partial<JWSUser>): Promise<{ uid: str
     const idToken = await user.getIdToken();
 
     // Make direct HTTP request to the Cloud Function
-    const response = await fetch('https://us-central1-jws-platform.cloudfunctions.net/createUserAccount', {
+    const response = await fetch('https://asia-northeast3-jinhyun-wholesale.cloudfunctions.net/createUserAccount', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

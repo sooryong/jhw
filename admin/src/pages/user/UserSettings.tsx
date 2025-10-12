@@ -399,7 +399,7 @@ const UserSettings: React.FC = () => {
   const columns: GridColDef[] = [
     {
       field: 'mobile',
-      headerName: '휴대폰 번호(ID)',
+      headerName: 'ID(휴대폰번호)',
       flex: 0.15, // 15%
       align: 'center',
       headerAlign: 'center',
@@ -636,25 +636,26 @@ const UserSettings: React.FC = () => {
       </Box>
 
       {/* 사용자 추가 페이퍼 */}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 600, mb: 3 }}>
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 600, mb: 2 }}>
           사용자 추가
         </Typography>
 
-        <Grid container spacing={2}>
+        <Grid container spacing={1.5}>
           {/* 1. 휴대폰 번호 */}
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               ref={firstFieldRef}
-              label="휴대폰 번호 (ID)"
+              label="ID(휴대폰번호)"
               value={addFormData.mobile}
               onChange={(e) => setAddFormData(prev => ({ ...prev, mobile: formatNumberInput(e.target.value, 'mobile') }))}
               onKeyDown={handleKeyDown}
               fullWidth
               required
-              placeholder="010-1234-5678"
+              placeholder="01012345678"
               error={addFormData.mobile !== '' && addFormData.mobile.length < 13}
               helperText={addFormData.mobile !== '' && addFormData.mobile.length < 13 ? '올바른 휴대폰 번호를 입력하세요' : ''}
+              size="small"
             />
           </Grid>
 
@@ -669,12 +670,13 @@ const UserSettings: React.FC = () => {
               required
               error={addFormData.name !== '' && addFormData.name.trim().length < 2}
               helperText={addFormData.name !== '' && addFormData.name.trim().length < 2 ? '이름은 2자 이상 입력하세요' : ''}
+              size="small"
             />
           </Grid>
 
           {/* 3. 역할 */}
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <FormControl fullWidth required>
+            <FormControl fullWidth required size="small">
               <InputLabel>역할</InputLabel>
               <Select
                 value={userRoles.length > 0 ? addFormData.role : ''}
@@ -693,12 +695,13 @@ const UserSettings: React.FC = () => {
 
           {/* 4. 버튼 */}
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Box sx={{ display: 'flex', gap: 1, height: '100%', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', gap: 1, height: '100%', alignItems: 'flex-start' }}>
               <Button
                 variant="outlined"
                 onClick={resetForm}
                 disabled={addFormLoading}
                 fullWidth
+                size="small"
               >
                 초기화
               </Button>
@@ -707,6 +710,7 @@ const UserSettings: React.FC = () => {
                 onClick={handleAddFormSubmit}
                 disabled={addFormLoading}
                 fullWidth
+                size="small"
               >
                 {addFormLoading ? '추가 중...' : '추가'}
               </Button>

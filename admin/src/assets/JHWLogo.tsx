@@ -1,23 +1,23 @@
 /**
- * 파일 경로: /src/assets/JWSLogo.tsx
+ * 파일 경로: /src/assets/JHWLogo.tsx
  * 작성 날짜: 2025-09-22
- * 주요 내용: JWS 플랫폼 로고 컴포넌트
+ * 주요 내용: JHW 플랫폼 로고 컴포넌트
  * 관련 데이터: SVG 로고, 브랜드 아이덴티티
  */
 
 import React from 'react';
 import { SvgIcon } from '@mui/material';
-import { JWS_BRAND_COLORS } from '../styles/theme';
+import { JHW_BRAND_COLORS } from '../styles/theme';
 
-interface JWSLogoProps {
+interface JHWLogoProps {
   variant?: 'icon' | 'full';
   sx?: React.ComponentProps<typeof SvgIcon>['sx'];
   fontSize?: 'inherit' | 'large' | 'medium' | 'small';
 }
 
-const JWSLogo: React.FC<JWSLogoProps> = ({ variant = 'icon', ...props }) => {
+const JHWLogo: React.FC<JHWLogoProps> = ({ variant = 'icon', ...props }) => {
   if (variant === 'full') {
-    // 전체 로고 (J + WS)
+    // 전체 로고 (J + HW)
     return (
       <SvgIcon {...props} viewBox="0 0 120 40">
         {/* 배경 원형 */}
@@ -25,8 +25,8 @@ const JWSLogo: React.FC<JWSLogoProps> = ({ variant = 'icon', ...props }) => {
           cx="20"
           cy="20"
           r="18"
-          fill={JWS_BRAND_COLORS.green}
-          stroke={JWS_BRAND_COLORS.greenDark}
+          fill={JHW_BRAND_COLORS.green}
+          stroke={JHW_BRAND_COLORS.greenDark}
           strokeWidth="1"
         />
         {/* J 글자 */}
@@ -41,23 +41,23 @@ const JWSLogo: React.FC<JWSLogoProps> = ({ variant = 'icon', ...props }) => {
         >
           J
         </text>
-        {/* WS 텍스트 */}
+        {/* HW 텍스트 */}
         <text
           x="50"
           y="18"
           fontSize="16"
           fontWeight="600"
-          fill={JWS_BRAND_COLORS.green}
+          fill={JHW_BRAND_COLORS.green}
           fontFamily="Arial, sans-serif"
         >
-          WS
+          HW
         </text>
         <text
           x="50"
           y="32"
           fontSize="10"
           fontWeight="400"
-          fill={JWS_BRAND_COLORS.greenDark}
+          fill={JHW_BRAND_COLORS.greenDark}
           fontFamily="Arial, sans-serif"
         >
           Platform
@@ -74,7 +74,7 @@ const JWSLogo: React.FC<JWSLogoProps> = ({ variant = 'icon', ...props }) => {
         width="32"
         height="32"
         rx="4"
-        fill={JWS_BRAND_COLORS.green}
+        fill={JHW_BRAND_COLORS.green}
       />
       {/* JH 글자 */}
       <text
@@ -92,4 +92,4 @@ const JWSLogo: React.FC<JWSLogoProps> = ({ variant = 'icon', ...props }) => {
   );
 };
 
-export default JWSLogo;
+export default JHWLogo;

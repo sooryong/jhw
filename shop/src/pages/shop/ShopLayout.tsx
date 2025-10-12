@@ -97,55 +97,50 @@ const ShopLayout: React.FC = () => {
   const [exitAction, setExitAction] = useState<'logout' | 'back' | null>(null);
 
 
-  // 대리 쇼핑: URL에서 customer 파라미터 읽어서 고객사명 표시 (한 번만 실행)
+  // 고객사 상호 조회
   useEffect(() => {
-    const customerParam = searchParams.get('customer');
-    const customerNameParam = searchParams.get('name');
-
-    // 이미 초기화되었거나, 파라미터가 없거나, 사용자 정보가 없으면 무시
-    if (customerInitialized || !customerParam || !user) {
-      return;
-    }
-
-    // admin/staff가 대리 쇼핑으로 진입한 경우
-    if (user.role === 'admin' || user.role === 'staff') {
-      // URL에서 받은 고객사명을 즉시 표시 (Firestore 조회 생략)
-      if (customerNameParam && customerNameParam.trim()) {
-        setCustomerName(decodeURIComponent(customerNameParam));
-      }
-      setCustomerInitialized(true);
-    } else {
-      setCustomerInitialized(true);
-    }
-  }, [searchParams, user, customerInitialized]);
-
-  // 고객사 상호 조회 (customer role만)
-  useEffect(() => {
-    // admin/staff는 URL 파라미터에서 이미 설정됨
-    if (user?.role === 'admin' || user?.role === 'staff') {
-      return;
-    }
-
     const loadCustomerName = async () => {
       const customerParam = searchParams.get('customer');
-      if (!customerParam) {
+
+      if (!customerParam || !user) {
         setCustomerName('');
         return;
       }
 
-      try {
-        const customer = await getCustomer(customerParam);
-        if (customer) {
-          setCustomerName(customer.businessName);
+      // Admin/Staff: URL 파라미터에서 고객사명 읽기
+      if (user.role === 'admin' || user.role === 'staff') {
+        const customerNameParam = searchParams.get('name');
+        if (customerNameParam && customerNameParam.trim()) {
+          setCustomerName(decodeURIComponent(customerNameParam));
+        } else {
+          // name 파라미터 없으면 Firestore에서 조회
+          try {
+            const customer = await getCustomer(customerParam);
+            if (customer) {
+              setCustomerName(customer.businessName);
+            }
+          } catch (error) {
+            console.error('고객사 상호 조회 실패:', error);
+            setCustomerName('');
+          }
         }
-      } catch (error) {
-        console.error('고객사 상호 조회 실패:', error);
-        setCustomerName('');
+      }
+      // Customer: Firestore에서 고객사 조회
+      else {
+        try {
+          const customer = await getCustomer(customerParam);
+          if (customer) {
+            setCustomerName(customer.businessName);
+          }
+        } catch (error) {
+          console.error('고객사 상호 조회 실패:', error);
+          setCustomerName('');
+        }
       }
     };
 
     loadCustomerName();
-  }, [searchParams, user?.role]);
+  }, [searchParams, user?.role, user]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -231,17 +226,10 @@ const ShopLayout: React.FC = () => {
   const drawerContent = (
     <Box sx={{ bgcolor: '#1F2937', minHeight: '100vh', color: '#FFFFFF', display: 'flex', flexDirection: 'column' }}>
       {/* 헤더 */}
-      <Box sx={{ p: 2, bgcolor: '#111827', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Box>
-          <Typography variant="h6" noWrap sx={{ color: '#FFFFFF', fontWeight: 700 }}>
-            JWS 쇼핑몰
-          </Typography>
-          {customerName && (
-            <Typography variant="body1" sx={{ color: '#3B82F6', fontWeight: 600, mt: 1 }}>
-              {customerName}
-            </Typography>
-          )}
-        </Box>
+      <Box sx={{ p: 2, bgcolor: '#111827', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Typography variant="h6" noWrap sx={{ color: '#FFFFFF', fontWeight: 700 }}>
+          JHW 쇼핑몰
+        </Typography>
       </Box>
 
       <Divider sx={{ borderColor: '#374151' }} />
@@ -289,101 +277,127 @@ const ShopLayout: React.FC = () => {
 
       {/* 하단 사용자 메뉴 */}
       <Box sx={{ mt: 'auto' }}>
-        <List>
-          {/* Admin/Staff: 대리 쇼핑으로 돌아가기 버튼 */}
-          {(user?.role === 'admin' || user?.role === 'staff') && (
-            <>
-              <ListItem disablePadding>
-                <ListItemButton
-                  onClick={handleCloseWindow}
-                  sx={{
-                    color: '#3B82F6',
-                    '&:hover': {
-                      bgcolor: '#374151',
-                    },
-                  }}
-                >
-                  <ListItemIcon sx={{ color: '#3B82F6' }}>
-                    <ArrowBackIcon />
-                  </ListItemIcon>
-                  <ListItemText primary="대리 쇼핑으로" />
-                </ListItemButton>
-              </ListItem>
-              <Divider sx={{ borderColor: '#374151' }} />
-              <ListItem sx={{ py: 1.5, px: 2, justifyContent: 'center' }}>
-                <Box sx={{ textAlign: 'center' }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.2, color: '#D1D5DB' }}>
-                    {user?.name || user?.email}
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: '#6B7280' }}>
-                    {user?.role}
-                  </Typography>
-                </Box>
-              </ListItem>
-            </>
-          )}
+        <Divider sx={{ borderColor: '#374151' }} />
 
-          {/* Customer: 확장 가능한 사용자 메뉴 */}
-          {user?.role === 'customer' && (
-            <>
-              <ListItem disablePadding>
+        {/* 고객사명 표시 */}
+        {customerName ? (
+          <>
+            <Box sx={{ py: 2, px: 2, bgcolor: '#111827', display: 'flex', justifyContent: 'center' }}>
+              <Typography variant="body1" sx={{ color: '#3B82F6', fontWeight: 600, fontSize: '0.95rem' }}>
+                {customerName}
+              </Typography>
+            </Box>
+            <Divider sx={{ borderColor: '#374151' }} />
+          </>
+        ) : null}
+
+        {/* 하단 버튼 영역: [←] [아이콘 사용자(역할)] */}
+        <Box sx={{ p: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {/* 나가기 버튼 */}
+            <IconButton
+              onClick={handleLogout}
+              size="small"
+              sx={{
+                color: '#9CA3AF',
+                '&:hover': {
+                  bgcolor: '#374151',
+                  color: '#FFFFFF',
+                },
+              }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+
+            {/* 사용자 정보: 아이콘 + 이름(역할) */}
+            {user?.role === 'customer' ? (
+              // 고객사 사용자: 클릭 가능한 메뉴
+              <Box sx={{ flexGrow: 1 }}>
                 <ListItemButton
                   onClick={handleUserMenuToggle}
                   sx={{
+                    borderRadius: 1,
+                    py: 0.5,
+                    px: 1,
                     color: '#D1D5DB',
+                    display: 'flex',
+                    justifyContent: 'center',
                     '&:hover': {
                       bgcolor: '#374151',
                     },
                   }}
                 >
-                  <ListItemIcon sx={{ color: '#9CA3AF' }}>
-                    <PersonIcon />
-                  </ListItemIcon>
-                  <ListItemText primary={user?.name || '사용자'} />
-                  {userMenuOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  <PersonIcon sx={{ fontSize: '1.2rem', mr: 1 }} />
+                  <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.9rem' }}>
+                    {user?.name || user?.email}
+                  </Typography>
+                  {userMenuOpen ? <ExpandLessIcon sx={{ ml: 1 }} /> : <ExpandMoreIcon sx={{ ml: 1 }} />}
                 </ListItemButton>
-              </ListItem>
-              <Collapse in={userMenuOpen} timeout="auto" unmountOnExit>
-                <List component="div" disablePadding>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={handleChangePassword}
-                      sx={{
-                        pl: 4,
-                        color: '#D1D5DB',
-                        '&:hover': {
-                          bgcolor: '#374151',
-                        },
-                      }}
-                    >
-                      <ListItemIcon sx={{ color: '#9CA3AF' }}>
-                        <KeyIcon />
-                      </ListItemIcon>
-                      <ListItemText primary="비밀번호 변경" />
-                    </ListItemButton>
-                  </ListItem>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={handleLogout}
-                      sx={{
-                        pl: 4,
-                        color: '#D1D5DB',
-                        '&:hover': {
-                          bgcolor: '#374151',
-                        },
-                      }}
-                    >
-                      <ListItemIcon sx={{ color: '#9CA3AF' }}>
-                        <LogoutIcon />
-                      </ListItemIcon>
-                      <ListItemText primary="쇼핑몰 종료" />
-                    </ListItemButton>
-                  </ListItem>
-                </List>
-              </Collapse>
-            </>
-          )}
-        </List>
+
+                {/* 고객사 사용자 메뉴 (비밀번호 변경, 로그아웃) */}
+                <Collapse in={userMenuOpen} timeout="auto" unmountOnExit>
+                  <List component="div" disablePadding sx={{ mt: 0.5 }}>
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        onClick={handleChangePassword}
+                        sx={{
+                          pl: 2,
+                          py: 0.75,
+                          borderRadius: 1,
+                          color: '#D1D5DB',
+                          '&:hover': {
+                            bgcolor: '#374151',
+                          },
+                        }}
+                      >
+                        <ListItemIcon sx={{ minWidth: 36, color: '#9CA3AF' }}>
+                          <KeyIcon sx={{ fontSize: '1.1rem' }} />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="비밀번호 변경"
+                          primaryTypographyProps={{ fontSize: '0.85rem' }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        onClick={handleLogout}
+                        sx={{
+                          pl: 2,
+                          py: 0.75,
+                          borderRadius: 1,
+                          color: '#D1D5DB',
+                          '&:hover': {
+                            bgcolor: '#374151',
+                          },
+                        }}
+                      >
+                        <ListItemIcon sx={{ minWidth: 36, color: '#9CA3AF' }}>
+                          <LogoutIcon sx={{ fontSize: '1.1rem' }} />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="로그아웃"
+                          primaryTypographyProps={{ fontSize: '0.85rem' }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  </List>
+                </Collapse>
+              </Box>
+            ) : (
+              // 직원/관리자: 클릭 불가능한 표시
+              <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                <PersonIcon sx={{ fontSize: '1.2rem', color: '#9CA3AF' }} />
+                <Typography variant="body2" sx={{ fontWeight: 500, color: '#D1D5DB', fontSize: '0.9rem' }}>
+                  {user?.name || user?.email}
+                  <Typography component="span" sx={{ color: '#6B7280', ml: 0.5 }}>
+                    ({user?.role})
+                  </Typography>
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </Box>
       </Box>
     </Box>
   );
@@ -412,7 +426,7 @@ const ShopLayout: React.FC = () => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div">
-            JWS 쇼핑몰
+            JHW 쇼핑몰
           </Typography>
           <Box sx={{ flexGrow: 1 }} />
           {customerName && (

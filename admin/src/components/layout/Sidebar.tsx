@@ -1,7 +1,7 @@
 /**
  * 파일 경로: /src/components/layout/Sidebar.tsx
  * 작성 날짜: 2025-09-22
- * 주요 내용: JWS 플랫폼 사이드바 컴포넌트
+ * 주요 내용: JHW 플랫폼 사이드바 컴포넌트
  * 관련 데이터: 메인 메뉴, 네비게이션, 사용자 정보
  */
 
@@ -44,7 +44,7 @@ import {
   Person,
 } from '@mui/icons-material';
 import { useAuth } from '../../hooks/useAuth';
-import JWSLogo from '../../assets/JWSLogo';
+import JHWLogo from '../../assets/JHWLogo';
 
 interface SidebarProps {
   open: boolean;
@@ -86,26 +86,6 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
         implemented: true,
       },
     ];
-
-    // admin/staff: 대리 쇼핑 메뉴
-    if (isAdminOrStaff) {
-      baseItems.push({
-        text: '대리 쇼핑',
-        icon: <ShoppingCart />,
-        path: '/proxy-shopping',
-        implemented: true,
-      });
-    }
-
-    // customer: 쇼핑몰 메뉴
-    if (isCustomer) {
-      baseItems.push({
-        text: '쇼핑몰',
-        icon: <Store />,
-        path: '/shop',
-        implemented: false,
-      });
-    }
 
     // admin 전용: 일일주문 확정
     if (user?.role === 'admin') {
@@ -262,7 +242,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
         {/* 헤더 영역 */}
         <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <JWSLogo sx={{ width: 32, height: 32, mr: 1.5 }} />
+            <JHWLogo sx={{ width: 32, height: 32, mr: 1.5 }} />
             <Typography
               variant="h6"
               onClick={() => window.location.reload()}
@@ -276,7 +256,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
                 }
               }}
             >
-              JWS 플랫폼
+              JHW 플랫폼
             </Typography>
           </Box>
           <IconButton onClick={onClose} size="small">

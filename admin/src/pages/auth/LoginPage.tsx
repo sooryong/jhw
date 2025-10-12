@@ -1,11 +1,11 @@
 /**
  * 파일 경로: /src/pages/auth/LoginPage.tsx
  * 작성 날짜: 2025-09-22
- * 주요 내용: JWS 플랫폼 표준 로그인 페이지 - 표준 MUI 디자인
+ * 주요 내용: JHW 플랫폼 표준 로그인 페이지 - 표준 MUI 디자인
  * 관련 데이터: Firebase Auth, 휴대폰번호 로그인, 표준 UI/UX
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -27,7 +27,7 @@ import {
   VisibilityOff,
 } from '@mui/icons-material';
 import { useAuth } from '../../hooks/useAuth';
-import JWSLogo from '../../assets/JWSLogo';
+import JHWLogo from '../../assets/JHWLogo';
 
 const LoginPage: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -35,8 +35,15 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const { login, loading } = useAuth();
+  const { user, login, loading } = useAuth();
   const navigate = useNavigate();
+
+  // 이미 로그인된 사용자는 대시보드로 리다이렉트
+  useEffect(() => {
+    if (user && !loading) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, loading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +56,7 @@ const LoginPage: React.FC = () => {
     try {
       setError('');
       await login(phoneNumber, password);
-      navigate('/'); // RoleBasedRedirect가 역할별 리다이렉트 처리
+      navigate('/', { replace: true }); // RoleBasedRedirect가 역할별 리다이렉트 처리
     } catch (err) {
       setError(err instanceof Error ? err.message : '로그인 중 오류가 발생했습니다.');
     }
@@ -95,20 +102,20 @@ const LoginPage: React.FC = () => {
             width: '100%',
           }}
         >
-          <JWSLogo sx={{ width: { xs: 56, sm: 64 }, height: { xs: 56, sm: 64 }, mb: 1 }} />
+          <JHWLogo sx={{ width: { xs: 48, sm: 52 }, height: { xs: 48, sm: 52 }, mb: 1 }} />
 
           <Typography
             component="h1"
-            variant="h4"
+            variant="h5"
             gutterBottom
             sx={{
               color: 'primary.main',
               fontWeight: 'bold',
               mb: { xs: 2, sm: 3 },
-              fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' }
+              fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.75rem' }
             }}
           >
-            JWS 플랫폼 로그인
+            JHW 플랫폼 로그인
           </Typography>
 
           {error && (
@@ -120,11 +127,10 @@ const LoginPage: React.FC = () => {
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1, width: '100%' }}>
             <TextField
               margin="normal"
-              required
               fullWidth
               id="phoneNumber"
-              label="휴대폰번호 (로그인 ID)"
-              placeholder="010-1234-5678"
+              label="ID(휴대폰번호)"
+              placeholder="01012345678"
               value={phoneNumber}
               onChange={handlePhoneChange}
               disabled={loading}
@@ -137,12 +143,10 @@ const LoginPage: React.FC = () => {
                   </InputAdornment>
                 ),
               }}
-              helperText="하이픈(-)은 자동으로 입력됩니다"
             />
 
             <TextField
               margin="normal"
-              required
               fullWidth
               name="password"
               label="비밀번호"
@@ -191,7 +195,7 @@ const LoginPage: React.FC = () => {
 
           <Box sx={{ mt: 2, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-              JWS 플랫폼 v1.0.0
+              진현유통 v2.1.0
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
               개발 모드 - 임시 로그인: 아무 값이나 입력하세요

@@ -16,6 +16,7 @@ import FavoriteEditPage from '../pages/shop/FavoriteEditPage';
 import ProductDetailPage from '../pages/shop/ProductDetailPage';
 import ChangePasswordPage from '../pages/shop/ChangePasswordPage';
 import MobileProductList from '../pages/shop/MobileProductList';
+import LoginPage from '../pages/auth/LoginPage';
 
 /**
  * JWS Shop Router
@@ -26,6 +27,9 @@ import MobileProductList from '../pages/shop/MobileProductList';
 const ShopRouter: React.FC = () => {
   return (
     <Routes>
+      {/* 로그인 페이지 */}
+      <Route path="/login" element={<LoginPage />} />
+
       {/* 고객사 선택 페이지 (진입점) */}
       <Route path="/shop/select-customer" element={<CustomerSelectionPage />} />
 
@@ -33,7 +37,7 @@ const ShopRouter: React.FC = () => {
       <Route path="/shop/change-password" element={<ChangePasswordPage />} />
 
       {/* 쇼핑몰 레이아웃으로 래핑된 라우트들 */}
-      <Route path="/shop" element={<ShopLayout />}>
+      <Route path="/shop/*" element={<ShopLayout />}>
         {/* 모바일 상품 목록 */}
         <Route index element={<MobileProductList />} />
 
@@ -53,11 +57,11 @@ const ShopRouter: React.FC = () => {
         <Route path="favorites/edit" element={<FavoriteEditPage />} />
       </Route>
 
-      {/* 루트 경로 → 고객사 선택 페이지로 리다이렉트 */}
-      <Route path="/" element={<Navigate to="/shop/select-customer" replace />} />
+      {/* 루트 경로 → 로그인 페이지로 리다이렉트 */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
 
-      {/* 404 처리 → 고객사 선택 페이지로 리다이렉트 */}
-      <Route path="*" element={<Navigate to="/shop/select-customer" replace />} />
+      {/* 404 처리 → 로그인 페이지로 리다이렉트 */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 };

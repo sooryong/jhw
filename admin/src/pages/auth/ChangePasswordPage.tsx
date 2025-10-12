@@ -25,7 +25,7 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../config/firebase';
 import { useAuth } from '../../hooks/useAuth';
-import JWSLogo from '../../assets/JWSLogo';
+import JHWLogo from '../../assets/JHWLogo';
 
 interface PasswordRequirement {
   id: string;
@@ -144,7 +144,7 @@ const ChangePasswordPage: React.FC = () => {
       >
         {/* 헤더 */}
         <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <JWSLogo sx={{ width: 48, height: 48, mx: 'auto', mb: 2 }} />
+          <JHWLogo sx={{ width: 48, height: 48, mx: 'auto', mb: 2 }} />
           <Typography variant="h4" component="h1" sx={{ fontWeight: 600, color: 'primary.main', mb: 1 }}>
             새 비밀번호 설정
           </Typography>

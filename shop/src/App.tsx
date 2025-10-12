@@ -1,7 +1,7 @@
 /**
  * 파일 경로: /src/App.tsx
  * 작성 날짜: 2025-10-12
- * 주요 내용: JWS Shop v2.0 메인 애플리케이션
+ * 주요 내용: JHW Shop v2.1 메인 애플리케이션
  * 관련 데이터: 쇼핑몰 전용 앱, 라우팅, 테마
  */
 
@@ -12,7 +12,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { SnackbarProvider } from 'notistack';
 
 // 테마
-import { jwsTheme } from './styles/theme';
+import { jhwTheme } from './styles/theme';
 
 // 라우터
 import ShopRouter from './router/ShopRouter';
@@ -24,7 +24,7 @@ import { CustomerProvider } from './contexts/CustomerContext';
 
 const App: React.FC = () => {
   return (
-    <ThemeProvider theme={jwsTheme}>
+    <ThemeProvider theme={jhwTheme}>
       <CssBaseline />
       <SnackbarProvider
         maxSnack={3}

@@ -1,7 +1,7 @@
 /**
  * 파일 경로: /src/App.tsx
  * 작성 날짜: 2025-09-22
- * 주요 내용: JWS 플랫폼 메인 애플리케이션 - 완전 새로운 TSX 구현
+ * 주요 내용: JHW 플랫폼 메인 애플리케이션 - 완전 새로운 TSX 구현
  * 관련 데이터: 전체 애플리케이션 구조, 라우팅, 테마
  */
 
@@ -12,7 +12,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { SnackbarProvider } from 'notistack';
 
 // 테마
-import { jwsTheme } from './styles/theme';
+import { jhwTheme } from './styles/theme';
 
 // 라우터
 import AppRouter from './router/AppRouter';
@@ -22,7 +22,7 @@ import { AuthProvider } from './contexts/AuthContextProvider';
 
 const App: React.FC = () => {
   return (
-    <ThemeProvider theme={jwsTheme}>
+    <ThemeProvider theme={jhwTheme}>
       <CssBaseline />
       <SnackbarProvider
         maxSnack={3}

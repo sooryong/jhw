@@ -25,9 +25,9 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-// LocalStorage 키
-const USER_CACHE_KEY = 'jhw_user_cache';
-const USER_CACHE_TIME_KEY = 'jhw_user_cache_time';
+// LocalStorage 키 (Shop 앱 전용)
+const USER_CACHE_KEY = 'jhw_shop_user_cache';
+const USER_CACHE_TIME_KEY = 'jhw_shop_user_cache_time';
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // LocalStorage에서 캐시된 user 읽기 (즉시 로딩)
@@ -140,13 +140,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const normalizedPhone = phoneNumber.replace(/[^0-9]/g, '');
       const email = `${normalizedPhone}@jhw.local`;
 
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      let userCredential;
+      try {
+        userCredential = await signInWithEmailAndPassword(auth, email, password);
+      } catch (authError: any) {
+        // Firebase Auth 에러 처리
+        if (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential') {
+          throw new Error('등록되지 않은 사용자입니다.\n\n사용자 등록은 관리자에게 문의하세요.');
+        } else if (authError.code === 'auth/wrong-password') {
+          throw new Error('비밀번호가 올바르지 않습니다.');
+        } else if (authError.code === 'auth/too-many-requests') {
+          throw new Error('로그인 시도가 너무 많습니다.\n잠시 후 다시 시도해주세요.');
+        } else {
+          throw new Error('로그인 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.');
+        }
+      }
 
       // authUid로 Firestore에서 사용자 정보 조회
       const jwsUser = await getUserByAuthUid(userCredential.user.uid);
 
       if (!jwsUser) {
-        throw new Error('사용자 정보를 찾을 수 없습니다');
+        // Firebase Auth에는 계정이 있지만 Firestore에 사용자 정보가 없는 경우
+        await signOut(auth);
+        throw new Error('사용자 정보가 등록되지 않았습니다.\n\n관리자에게 문의하세요.');
+      }
+
+      // isActive 확인
+      if (!jwsUser.isActive) {
+        await signOut(auth);
+        throw new Error('비활성화된 계정입니다.\n\n관리자에게 문의하세요.');
       }
 
       // SMS 수신자 정보 추가 조회 (customer 역할인 경우)

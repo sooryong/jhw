@@ -1,28 +1,28 @@
 /**
  * 파일 경로: /src/styles/theme.ts
  * 작성 날짜: 2025-09-22
- * 주요 내용: JWS 플랫폼 Material-UI 테마 설정 - 표준 MUI 디자인
- * 관련 데이터: Material-UI 테마, 표준 레이아웃, JWS 디자인 시스템
+ * 주요 내용: JHW 플랫폼 Material-UI 테마 설정 - 표준 MUI 디자인
+ * 관련 데이터: Material-UI 테마, 표준 레이아웃, JHW 디자인 시스템
  */
 
 import { createTheme } from '@mui/material/styles';
 
-// JWS 브랜드 색상
-export const JWS_BRAND_COLORS = {
+// JHW 브랜드 색상
+export const JHW_BRAND_COLORS = {
   green: '#059669',
   greenLight: '#10b981',
   greenDark: '#047857',
 } as const;
 
-// JWS 플랫폼 테마 생성 (표준 MUI 디자인)
-export const jwsTheme = createTheme({
-  // 색상 팔레트 - JWS 그린 기반
+// JHW 플랫폼 테마 생성 (표준 MUI 디자인)
+export const jhwTheme = createTheme({
+  // 색상 팔레트 - JHW 그린 기반
   palette: {
     mode: 'light',
     primary: {
-      main: JWS_BRAND_COLORS.green,
-      light: JWS_BRAND_COLORS.greenLight,
-      dark: JWS_BRAND_COLORS.greenDark,
+      main: JHW_BRAND_COLORS.green,
+      light: JHW_BRAND_COLORS.greenLight,
+      dark: JHW_BRAND_COLORS.greenDark,
     },
     secondary: {
       main: '#047857',
@@ -124,4 +124,4 @@ export const jwsTheme = createTheme({
   },
 });
 
-export default jwsTheme;
+export default jhwTheme;

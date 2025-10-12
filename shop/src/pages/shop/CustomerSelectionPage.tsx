@@ -48,31 +48,44 @@ const CustomerSelectionPage: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      const availableBusinessNumbers = getAvailableCustomers();
-      if (availableBusinessNumbers.length === 0) {
-        setError('연결된 고객사가 없습니다. 관리자에게 문의하세요.');
-        return;
+      let validCustomers: Customer[] = [];
+      let businessNumbers: string[] = [];
+
+      // Admin/Staff: 모든 고객사 조회
+      if (user?.role === 'admin' || user?.role === 'staff') {
+        const allCustomers = await customerService.getCustomers({ isActive: true });
+        validCustomers = allCustomers;
+        businessNumbers = allCustomers.map(c => c.businessNumber);
       }
+      // Customer: 연결된 고객사만 조회
+      else {
+        const availableBusinessNumbers = getAvailableCustomers();
+        if (availableBusinessNumbers.length === 0) {
+          setError('연결된 고객사가 없습니다. 관리자에게 문의하세요.');
+          return;
+        }
 
-      // 단일 고객사인 경우 자동 선택 후 리다이렉트
-      if (availableBusinessNumbers.length === 1) {
-        const businessNumber = availableBusinessNumbers[0];
-        navigate(`/shop?customer=${businessNumber}`, { replace: true });
-        return;
+        // 단일 고객사인 경우 자동 선택 후 리다이렉트
+        if (availableBusinessNumbers.length === 1) {
+          const businessNumber = availableBusinessNumbers[0];
+          navigate(`/shop?customer=${businessNumber}`, { replace: true });
+          return;
+        }
+
+        // 연결된 고객사들의 상세 정보 조회
+        const customerPromises = availableBusinessNumbers.map(businessNumber =>
+          customerService.getCustomer(businessNumber)
+        );
+
+        const customerResults = await Promise.all(customerPromises);
+        validCustomers = customerResults.filter(customer => customer !== null) as Customer[];
+        businessNumbers = availableBusinessNumbers;
       }
-
-      // 연결된 고객사들의 상세 정보 조회
-      const customerPromises = availableBusinessNumbers.map(businessNumber =>
-        customerService.getCustomer(businessNumber)
-      );
-
-      const customerResults = await Promise.all(customerPromises);
-      const validCustomers = customerResults.filter(customer => customer !== null) as Customer[];
 
       setCustomers(validCustomers);
 
       // 주문 통계 조회 (resetAt 이후 현재까지: 건수, 수량, 금액)
-      const stats = await getOrderStatsByCustomers(availableBusinessNumbers);
+      const stats = await getOrderStatsByCustomers(businessNumbers);
       setOrderStats(stats);
 
     } catch (err) {
@@ -81,7 +94,7 @@ const CustomerSelectionPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [getAvailableCustomers, navigate]);
+  }, [user?.role, getAvailableCustomers, navigate]);
 
   // 데이터 로드
   useEffect(() => {
@@ -106,21 +119,17 @@ const CustomerSelectionPage: React.FC = () => {
   const handleLogout = async () => {
     try {
       await logout();
-      navigate('/login');
+      navigate('/login', { replace: true });
     } catch (error) {
       console.error('로그아웃 실패:', error);
       setError('로그아웃에 실패했습니다.');
     }
   };
 
-  if (!user || user.role !== 'customer') {
-    return (
-      <Container sx={{ py: 4 }}>
-        <Alert severity="error">
-          고객사 사용자만 접근할 수 있습니다.
-        </Alert>
-      </Container>
-    );
+  // 비로그인 사용자는 로그인 페이지로 리다이렉트
+  if (!user) {
+    navigate('/login', { replace: true });
+    return null;
   }
 
   if (loading) {
@@ -175,7 +184,10 @@ const CustomerSelectionPage: React.FC = () => {
 
         {/* 하단: 설명문 (전체 너비) */}
         <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-          {`${user.name}님, 쇼핑몰을 이용할 고객사를 선택해주세요.`}
+          {user.role === 'customer'
+            ? `${user.name}님, 쇼핑몰을 이용할 고객사를 선택해주세요.`
+            : `${user.name}님 (${user.role}), 대리 쇼핑할 고객사를 선택해주세요.`
+          }
           {isSMSRecipientUser() && ` 📱 SMS 수신자로 등록된 고객사: ${getAvailableCustomers().length}개`}
         </Typography>
       </Box>

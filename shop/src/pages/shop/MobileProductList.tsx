@@ -278,8 +278,12 @@ const MobileProductList: React.FC = () => {
             }}
             sx={{
               display: { xs: 'none', md: 'flex' },
-              px: 10,
+              px: 12.66,
               whiteSpace: 'nowrap',
+              bgcolor: '#01579B',
+              '&:hover': {
+                bgcolor: '#003D82',
+              },
             }}
           >
             장바구니
