@@ -1,0 +1,1143 @@
+/**
+ * 파일 경로: /src/pages/user/UserSettings.tsx
+ * 작성 날짜: 2025-09-27
+ * 주요 내용: 사용자 설정 페이지
+ * 관련 데이터: users 컬렉션
+ */
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Grid,
+  Switch,
+  Snackbar,
+  CircularProgress,
+} from '@mui/material';
+import { DataGrid } from '@mui/x-data-grid';
+import type { GridColDef } from '@mui/x-data-grid';
+import {
+  People as PeopleIcon,
+  VpnKey as VpnKeyIcon,
+} from '@mui/icons-material';
+import { getUsers, deleteUserAccount, createUser, updateUser, resetUserPassword, findUserByMobile } from '../../services/userService';
+import { customerService } from '../../services/customerService';
+import { settingsService } from '../../services/settingsService';
+import { customerLinkService } from '../../services/customerLinkService';
+import { formatMobile, normalizeNumber, formatNumberInput } from '../../utils/numberUtils';
+import type { JWSUser } from '../../types/user';
+import type { Customer } from '../../types/company';
+import type { NormalizedMobile, NormalizedBusinessNumber } from '../../types/phoneNumber';
+import { useAuth } from '../../hooks/useAuth';
+import {
+  validateUserForm,
+  hasValidationErrors,
+} from '../../utils/userValidation';
+
+interface AddFormData {
+  name: string;
+  mobile: string;
+  role: string; // settings의 코드 값 (예: "0", "1", "2")
+}
+
+const UserSettings: React.FC = () => {
+  // 현재 로그인한 사용자 정보
+  const { user: currentUser } = useAuth();
+
+  // 기본 상태 관리
+  const [users, setUsers] = useState<JWSUser[]>([]);
+  const [userRoles, setUserRoles] = useState<{ code: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+
+  const [addFormData, setAddFormData] = useState<AddFormData>({
+    name: '',
+    mobile: '',
+    role: '1', // 기본값: 직원 (settings의 코드)
+  });
+  const [addFormLoading, setAddFormLoading] = useState(false);
+
+  // 수정 다이얼로그 상태
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [userToEdit, setUserToEdit] = useState<JWSUser | null>(null);
+  const [editFormData, setEditFormData] = useState<{
+    isActive: boolean;
+  }>({
+    isActive: true
+  });
+  const [editLoading, setEditLoading] = useState(false);
+
+  // 삭제 확인 다이얼로그
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<JWSUser | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // 비밀번호 초기화 확인 다이얼로그
+  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [userToResetPassword, setUserToResetPassword] = useState<JWSUser | null>(null);
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+
+  // 성공 메시지
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // 고객사 상세 정보 모달
+  const [customerDetailModalOpen, setCustomerDetailModalOpen] = useState(false);
+  const [modalCustomerDetails, setModalCustomerDetails] = useState<Customer[]>([]);
+  const [modalLoading, setModalLoading] = useState(false);
+
+  // 폼 필드 참조
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+
+  // 데이터 로드
+  const loadUsers = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [userData, userRoleData] = await Promise.all([
+        getUsers(),
+        settingsService.getUserRoles() // 사용자 역할 목록 조회
+      ]);
+
+      setUsers(userData);
+      setUserRoles(userRoleData);
+
+    } catch (err) {
+      // 오류 처리: 사용자 목록 로드 실패
+      setError(err instanceof Error ? err.message : '사용자 목록을 불러올 수 없습니다.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // 초기 로드
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  // 컴포넌트 마운트 시 첫 번째 필드에 포커스
+  useEffect(() => {
+    if (firstFieldRef.current) {
+      setTimeout(() => {
+        firstFieldRef.current?.focus();
+      }, 100);
+    }
+  }, []);
+
+
+
+  // 폼 초기화 함수
+  const resetForm = () => {
+    setAddFormData({
+      name: '',
+      mobile: '',
+      role: '1',
+    });
+    if (firstFieldRef.current) {
+      firstFieldRef.current.focus();
+    }
+  };
+
+  // 키보드 이벤트 핸들러
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      resetForm();
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      if (e.ctrlKey) {
+        // Ctrl+Enter로 저장
+        e.preventDefault();
+        handleAddFormSubmit();
+        return;
+      }
+
+      // Enter로 다음 필드 이동
+      e.preventDefault();
+      const form = e.currentTarget.closest('form') || e.currentTarget.closest('[role="form"]');
+      if (!form) return;
+
+      const inputs = Array.from(form.querySelectorAll('input, select, button[type="submit"]'));
+      const currentIndex = inputs.indexOf(e.target as Element);
+      const nextInput = inputs[currentIndex + 1] as HTMLElement;
+
+      if (nextInput) {
+        nextInput.focus();
+      }
+    }
+  };
+
+  // 인라인 추가 폼 핸들러
+  const handleAddFormSubmit = async () => {
+    // 폼 검증 (통합 유틸리티 사용)
+    const validationErrors = validateUserForm(addFormData.name, addFormData.mobile, addFormData.role);
+
+    if (hasValidationErrors(validationErrors)) {
+      const errorMessage = Object.values(validationErrors)[0]; // 첫 번째 에러 메시지 표시
+      setError(errorMessage);
+      return;
+    }
+
+    // 휴대폰번호 정규화 (저장용)
+    const normalizedMobile = normalizeNumber(addFormData.mobile);
+
+    // customer 역할인지 확인 (코드 "2")
+    const actualRole = settingsService.codeToUserRole(addFormData.role);
+    let linkedCustomers: string[] = [];
+
+    if (actualRole === 'customer') {
+      // SMS 수신자 기반 연결: 휴대폰번호로 연결된 고객사 자동 확인 (선택적)
+      try {
+        const smsResult = await customerLinkService.findCustomersBySMSRecipient(normalizedMobile);
+
+        if (smsResult && smsResult.linkedCustomers.length > 0) {
+          // SMS 수신자로 등록된 경우: 연결된 고객사 목록을 설정
+          linkedCustomers = smsResult.linkedCustomers.map(customer =>
+            customer.businessNumber // 하이픈 있는 형태로 저장 (customers 문서 ID와 일치)
+          );
+        } else {
+          // SMS 수신자가 아닌 경우: 빈 배열로 초기화하고 계속 진행
+          linkedCustomers = [];
+        }
+
+      } catch {
+        // SMS 수신자 확인 실패 시에도 빈 배열로 사용자 생성 계속 진행
+        linkedCustomers = [];
+      }
+    }
+
+    try {
+      setAddFormLoading(true);
+
+      // 휴대폰번호 중복 체크
+      const existingUser = await findUserByMobile(normalizedMobile);
+
+      if (existingUser) {
+        setError(`이미 등록된 휴대폰 번호입니다. (등록된 사용자: ${existingUser.name})`);
+        // 폼 초기화
+        resetForm();
+        return;
+      }
+
+      const userData: Partial<JWSUser> = {
+        name: addFormData.name,
+        mobile: normalizedMobile as NormalizedMobile,
+        role: actualRole, // 변환된 실제 역할 사용
+        isActive: true,
+        requiresPasswordChange: true
+      };
+
+      // customer 역할인 경우에만 linkedCustomers 필드 추가
+      if (actualRole === 'customer') {
+        userData.linkedCustomers = (linkedCustomers || []) as NormalizedBusinessNumber[];
+      }
+
+      const result = await createUser(userData);
+      setSuccessMessage(`사용자가 추가되었습니다. 기본 비밀번호: ${result.defaultPassword} (첫 로그인 시 비밀번호 변경 필수)`);
+      resetForm();
+      loadUsers();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '사용자 추가 중 오류가 발생했습니다.');
+    } finally {
+      setAddFormLoading(false);
+    }
+  };
+
+  // 수정 다이얼로그 열기
+  const handleEditClick = (user: JWSUser) => {
+    setUserToEdit(user);
+    setEditFormData({
+      isActive: user.isActive
+    });
+    setEditDialogOpen(true);
+    setEditLoading(false);
+  };
+
+  // 수정 다이얼로그 닫기
+  const handleEditDialogClose = () => {
+    if (editLoading) return;
+    setEditDialogOpen(false);
+    setUserToEdit(null);
+    setEditFormData({ isActive: true });
+  };
+
+  // 사용자 상태 즉시 변경 (Auto-save)
+  const handleStatusToggle = async (checked: boolean) => {
+    if (!userToEdit) return;
+
+    // 상태 먼저 업데이트 (UI 즉시 반영)
+    setEditFormData(prev => ({ ...prev, isActive: checked }));
+
+    try {
+      setEditLoading(true);
+
+      const updateData: Partial<JWSUser> = {
+        isActive: checked
+      };
+
+      await updateUser(userToEdit.uid, updateData);
+      // 성공 시 userToEdit 상태 업데이트 (모달 유지)
+      setUserToEdit(prev => prev ? { ...prev, isActive: checked } : null);
+      // users 목록도 업데이트 (DataGrid 반영)
+      setUsers(prevUsers =>
+        prevUsers.map(u => u.uid === userToEdit.uid ? { ...u, isActive: checked } : u)
+      );
+    } catch {
+      // 실패 시 원래 상태로 복구
+      setEditFormData(prev => ({ ...prev, isActive: !checked }));
+      setError('계정 상태 변경 중 오류가 발생했습니다.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // 비밀번호 초기화 (수정 다이얼로그에서)
+  const handlePasswordResetClick = (user: JWSUser) => {
+    setUserToResetPassword(user);
+    setResetPasswordDialogOpen(true);
+    setResetPasswordLoading(false);
+  };
+
+  const handlePasswordResetConfirm = async () => {
+    if (!userToResetPassword) return;
+
+    setResetPasswordLoading(true);
+
+    // 즉시 시작 알림 표시
+    setSuccessMessage(`${userToResetPassword.name}님의 비밀번호 초기화를 시작합니다...`);
+
+    try {
+      await resetUserPassword(userToResetPassword.uid);
+      setResetPasswordDialogOpen(false);
+      setUserToResetPassword(null);
+      setSuccessMessage(`${userToResetPassword.name}님의 비밀번호가 초기화되었습니다. 해당 사용자는 다음 로그인 시 비밀번호 변경이 필요합니다.`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '비밀번호 초기화 중 오류가 발생했습니다.');
+    } finally {
+      setResetPasswordLoading(false);
+    }
+  };
+
+  // 고객사 상세 정보 모달 열기
+  const handleCustomerDetailsClick = async (businessNumbers: string[]) => {
+    if (!businessNumbers || businessNumbers.length === 0) return;
+
+    setModalLoading(true);
+    setCustomerDetailModalOpen(true);
+    setModalCustomerDetails([]);
+
+    try {
+      const customerDetails: Customer[] = [];
+      for (const businessNumber of businessNumbers) {
+        const customer = await customerService.getCustomer(businessNumber);
+        if (customer) {
+          customerDetails.push(customer);
+        }
+      }
+      setModalCustomerDetails(customerDetails);
+    } catch {
+      setError('고객사 정보를 불러올 수 없습니다.');
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  // 고객사 상세 정보 모달 닫기
+  const handleCustomerDetailsClose = () => {
+    setCustomerDetailModalOpen(false);
+    setModalCustomerDetails([]);
+    setModalLoading(false);
+  };
+
+
+  const handleDeleteConfirm = async () => {
+    if (!userToDelete) return;
+
+    setDeleteLoading(true);
+
+    // 즉시 시작 알림 표시
+    setSuccessMessage(`${userToDelete.name}님의 계정 삭제를 시작합니다...`);
+
+    try {
+      // Firebase Auth + Firestore 통합 삭제 (Cloud Function 호출)
+      await deleteUserAccount(userToDelete.uid);
+
+      setDeleteDialogOpen(false);
+      setUserToDelete(null);
+      setSuccessMessage('사용자가 완전히 삭제되었습니다. (Firebase Auth + Firestore)');
+      loadUsers();
+    } catch {
+      setError('사용자 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // 삭제 핸들러
+  const handleDeleteClick = (user: JWSUser) => {
+    setUserToDelete(user);
+    setDeleteDialogOpen(true);
+    setDeleteLoading(false); // 다이얼로그 열 때 로딩 상태 초기화
+  };
+
+  // 데이터그리드 컬럼 정의
+  const columns: GridColDef[] = [
+    {
+      field: 'mobile',
+      headerName: '휴대폰 번호(ID)',
+      flex: 0.15, // 15%
+      align: 'center',
+      headerAlign: 'center',
+      renderCell: (params) => (
+        <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            {formatMobile(params.value)}
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      field: 'name',
+      headerName: '이름',
+      flex: 0.15, // 15%
+      align: 'center',
+      headerAlign: 'center',
+      renderCell: (params) => (
+        <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            {params.value}
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      field: 'role',
+      headerName: '역할',
+      flex: 0.15, // 15%
+      align: 'center',
+      headerAlign: 'center',
+      renderCell: (params) => (
+        <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+          <Chip
+            label={params.value}
+            variant="outlined"
+            size="small"
+            color={
+              params.value === 'admin' ? 'error'
+              : params.value === 'customer' ? 'primary'
+              : 'default'
+            }
+            sx={{ fontSize: '0.75rem', minWidth: '80px' }}
+          />
+        </Box>
+      ),
+    },
+    {
+      field: 'linkedCustomers',
+      headerName: '고객사연결',
+      flex: 0.20, // 20%
+      align: 'center',
+      headerAlign: 'center',
+      renderCell: (params) => {
+        const isCustomer = params.row.role === 'customer';
+        const count = isCustomer ? (params.value?.length || 0) : 0;
+
+        if (!isCustomer) {
+          return (
+            <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+              <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.disabled' }}>
+                -
+              </Typography>
+            </Box>
+          );
+        }
+
+        return (
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            height="100%"
+            onClick={count > 0 ? () => handleCustomerDetailsClick(params.value) : undefined}
+            sx={count > 0 ? { cursor: 'pointer' } : undefined}
+          >
+            <Typography
+              variant="body2"
+              sx={{
+                fontSize: '0.875rem',
+                color: count > 0 ? 'primary.main' : 'text.secondary',
+                fontWeight: count > 0 ? 600 : 400
+              }}
+            >
+              {count}
+            </Typography>
+          </Box>
+        );
+      },
+    },
+    {
+      field: 'isActive',
+      headerName: '상태',
+      flex: 0.15, // 15%
+      align: 'center',
+      headerAlign: 'center',
+      hideable: true,
+      renderCell: (params) => (
+        <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+          <Chip
+            label={params.value ? '활성' : '비활성'}
+            size="small"
+            color={params.value ? 'success' : 'default'}
+            variant="outlined"
+            sx={{ fontSize: '0.75rem' }}
+          />
+        </Box>
+      ),
+    },
+    {
+      field: 'actions',
+      headerName: '작업',
+      flex: 0.20, // 20%
+      align: 'center',
+      headerAlign: 'center',
+      sortable: false,
+      disableColumnMenu: true,
+      renderCell: (params) => {
+        const isCurrentUser = currentUser?.uid === params.row.uid;
+
+        return (
+          <Box display="flex" alignItems="center" justifyContent="center" height="100%" gap={0.5}>
+            <Button
+              variant="contained"
+              size="small"
+              color="primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEditClick(params.row);
+              }}
+              disabled={isCurrentUser}
+              sx={{
+                fontSize: '0.7rem',
+                minWidth: 'auto',
+                px: 1,
+                py: 0.25,
+                height: '22px',
+                mr: 0.5
+              }}
+              title={isCurrentUser ? '본인은 수정할 수 없습니다' : '사용자 수정'}
+            >
+              수정
+            </Button>
+            {isCurrentUser ? (
+              <Button
+                variant="outlined"
+                size="small"
+                color="success"
+                disabled
+                sx={{
+                  fontSize: '0.7rem',
+                  minWidth: 'auto',
+                  px: 1,
+                  py: 0.25,
+                  height: '22px',
+                  opacity: 0.8
+                }}
+                title="현재 로그인한 사용자"
+              >
+                본인
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                size="small"
+                color="error"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteClick(params.row);
+                }}
+                sx={{
+                  fontSize: '0.7rem',
+                  minWidth: 'auto',
+                  px: 1,
+                  py: 0.25,
+                  height: '22px'
+                }}
+                title="사용자 삭제"
+              >
+                삭제
+              </Button>
+            )}
+          </Box>
+        );
+      },
+    },
+  ];
+
+  return (
+    <Box sx={{
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+      overflowX: 'hidden',
+      p: 3,
+      width: '80%',
+      maxWidth: '100vw',
+      margin: '0 auto',
+      boxSizing: 'border-box'
+    }}>
+      {/* 헤더 */}
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        mb: 3,
+        flexShrink: 0
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <PeopleIcon sx={{ mr: 1, color: 'primary.main' }} />
+          <Typography
+            variant="h4"
+            component="h1"
+            onClick={loadUsers}
+            sx={{
+              cursor: 'pointer',
+              '&:hover': {
+                color: 'primary.main'
+              }
+            }}
+          >
+            사용자 설정
+          </Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          onClick={loadUsers}
+          disabled={loading}
+          size="small"
+        >
+          새로고침
+        </Button>
+      </Box>
+
+      {/* 사용자 추가 페이퍼 */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 600, mb: 3 }}>
+          사용자 추가
+        </Typography>
+
+        <Grid container spacing={2}>
+          {/* 1. 휴대폰 번호 */}
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <TextField
+              ref={firstFieldRef}
+              label="휴대폰 번호 (ID)"
+              value={addFormData.mobile}
+              onChange={(e) => setAddFormData(prev => ({ ...prev, mobile: formatNumberInput(e.target.value, 'mobile') }))}
+              onKeyDown={handleKeyDown}
+              fullWidth
+              required
+              placeholder="010-1234-5678"
+              error={addFormData.mobile !== '' && addFormData.mobile.length < 13}
+              helperText={addFormData.mobile !== '' && addFormData.mobile.length < 13 ? '올바른 휴대폰 번호를 입력하세요' : ''}
+            />
+          </Grid>
+
+          {/* 2. 이름 */}
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <TextField
+              label="이름"
+              value={addFormData.name}
+              onChange={(e) => setAddFormData(prev => ({ ...prev, name: e.target.value }))}
+              onKeyDown={handleKeyDown}
+              fullWidth
+              required
+              error={addFormData.name !== '' && addFormData.name.trim().length < 2}
+              helperText={addFormData.name !== '' && addFormData.name.trim().length < 2 ? '이름은 2자 이상 입력하세요' : ''}
+            />
+          </Grid>
+
+          {/* 3. 역할 */}
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <FormControl fullWidth required>
+              <InputLabel>역할</InputLabel>
+              <Select
+                value={userRoles.length > 0 ? addFormData.role : ''}
+                label="역할"
+                onChange={(e) => setAddFormData(prev => ({ ...prev, role: e.target.value }))}
+                onKeyDown={handleKeyDown}
+              >
+                {userRoles.map((userRole) => (
+                  <MenuItem key={userRole.code} value={userRole.code}>
+                    {userRole.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {/* 4. 버튼 */}
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Box sx={{ display: 'flex', gap: 1, height: '100%', alignItems: 'center' }}>
+              <Button
+                variant="outlined"
+                onClick={resetForm}
+                disabled={addFormLoading}
+                fullWidth
+              >
+                초기화
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleAddFormSubmit}
+                disabled={addFormLoading}
+                fullWidth
+              >
+                {addFormLoading ? '추가 중...' : '추가'}
+              </Button>
+            </Box>
+          </Grid>
+
+        </Grid>
+      </Paper>
+      {/* 에러 표시 */}
+      {error && (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2 }}>
+          <Box sx={{ width: '80%' }}>
+            <Alert severity="error">
+              {error}
+            </Alert>
+          </Box>
+        </Box>
+      )}
+      {/* 사용자 목록 테이블 (100% 너비) */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-start', flex: 1, minHeight: 0 }}>
+        <Paper sx={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative'
+        }}>
+          <Box sx={{ flex: 1, minHeight: 0, p: 3 }}>
+            <DataGrid
+              rows={users}
+              columns={columns}
+              loading={loading}
+              disableRowSelectionOnClick
+              disableColumnResize
+              disableColumnMenu
+              getRowId={(row) => row.uid}
+              rowHeight={60}
+              getRowClassName={(params) =>
+                !params.row.isActive ? 'inactive-user-row' : ''
+              }
+              pagination
+              paginationModel={{ page: 0, pageSize: 10 }}
+              pageSizeOptions={[10, 20, 30]}
+              sx={{
+                border: 0,
+                width: '100%',
+                height: '100%',
+                minWidth: 0,
+                overflow: 'hidden',
+                '& .MuiDataGrid-main': {
+                  overflow: 'hidden'
+                },
+                '& .inactive-user-row': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                  opacity: 0.7,
+                  '& .MuiDataGrid-cell': {
+                    color: 'text.secondary',
+                  },
+                  '&:hover': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.08)',
+                    opacity: 0.8,
+                  },
+                },
+                '& .MuiDataGrid-cell': {
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  wordBreak: 'break-word',
+                  padding: '8px 4px',
+                },
+                '& .MuiDataGrid-columnHeader': {
+                  padding: '8px 4px',
+                },
+                '& .MuiDataGrid-row:hover': {
+                  backgroundColor: 'action.hover',
+                },
+              }}
+              slotProps={{
+                loadingOverlay: {
+                  variant: 'skeleton',
+                  noRowsVariant: 'skeleton',
+                },
+              }}
+            />
+          </Box>
+        </Paper>
+      </Box>
+      {/* 성공/에러 메시지 */}
+      <Snackbar
+        open={!!successMessage}
+        autoHideDuration={4000}
+        onClose={() => setSuccessMessage(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSuccessMessage(null)} severity="success" sx={{ width: '100%' }}>
+          {successMessage}
+        </Alert>
+      </Snackbar>
+      <Snackbar
+        open={!!error}
+        autoHideDuration={6000}
+        onClose={() => setError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setError(null)} severity="error" sx={{ width: '100%' }}>
+          {error}
+        </Alert>
+      </Snackbar>
+      {/* 삭제 확인 다이얼로그 */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={deleteLoading ? undefined : () => setDeleteDialogOpen(false)}
+        disableEscapeKeyDown={deleteLoading}
+      >
+        <DialogTitle sx={{ color: deleteLoading ? 'primary.main' : 'error.main' }}>
+          {deleteLoading ? '🗑️ 사용자 삭제 진행 중' : '⚠️ 사용자 삭제 확인'}
+        </DialogTitle>
+        <DialogContent>
+          {deleteLoading ? (
+            <>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <CircularProgress size={24} sx={{ mr: 2 }} />
+                <Typography>
+                  <strong>'{userToDelete?.name}'</strong>님의 계정을 삭제하고 있습니다...
+                </Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                • Firebase Auth에서 사용자 인증 정보를 삭제 중입니다.
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                • Firestore에서 사용자 데이터를 삭제 중입니다.
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                • 예상 소요 시간: 3-5초
+              </Typography>
+              <Typography variant="body2" color="primary.main" sx={{ fontWeight: 600 }}>
+                ⏳ 잠시만 기다려주세요...
+              </Typography>
+            </>
+          ) : (
+            <>
+              <Typography sx={{ mb: 2 }}>
+                <strong>'{userToDelete?.name}'</strong> 사용자를 정말 삭제하시겠습니까?
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                • Firebase Auth와 Firestore에서 모든 데이터가 완전히 삭제됩니다.
+              </Typography>
+              <Typography variant="body2" color="error.main" sx={{ fontWeight: 600 }}>
+                ⚠️ 이 작업은 되돌릴 수 없습니다.
+              </Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setDeleteDialogOpen(false)}
+            disabled={deleteLoading}
+          >
+            {deleteLoading ? '처리 중...' : '취소'}
+          </Button>
+          <Button
+            onClick={handleDeleteConfirm}
+            color={deleteLoading ? 'primary' : 'error'}
+            variant="contained"
+            disabled={deleteLoading}
+            startIcon={deleteLoading ? <CircularProgress size={20} color="inherit" /> : null}
+          >
+            {deleteLoading ? '삭제 중...' : '삭제'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* 비밀번호 초기화 확인 다이얼로그 */}
+      <Dialog
+        open={resetPasswordDialogOpen}
+        onClose={resetPasswordLoading ? undefined : () => setResetPasswordDialogOpen(false)}
+        disableEscapeKeyDown={resetPasswordLoading}
+      >
+        <DialogTitle sx={{ color: resetPasswordLoading ? 'primary.main' : 'warning.main' }}>
+          {resetPasswordLoading ? '🔄 비밀번호 초기화 진행 중' : '⚠️ 비밀번호 초기화 확인'}
+        </DialogTitle>
+        <DialogContent>
+          {resetPasswordLoading ? (
+            <>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <CircularProgress size={24} sx={{ mr: 2 }} />
+                <Typography>
+                  <strong>'{userToResetPassword?.name}'</strong>님의 비밀번호를 초기화하고 있습니다...
+                </Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                • Firebase Auth 서버와 통신 중입니다.
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                • 예상 소요 시간: 3-5초
+              </Typography>
+              <Typography variant="body2" color="primary.main" sx={{ fontWeight: 600 }}>
+                ⏳ 잠시만 기다려주세요...
+              </Typography>
+            </>
+          ) : (
+            <>
+              <Typography sx={{ mb: 2 }}>
+                <strong>'{userToResetPassword?.name}'</strong> 사용자의 비밀번호를 초기화하시겠습니까?
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                • 새 비밀번호는 휴대폰 뒷자리 4자리를 2번 반복한 형태입니다.
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                • 예: 010-1234-5678 → 새 비밀번호: 56785678
+              </Typography>
+              <Typography variant="body2" color="success.main" sx={{ fontWeight: 600 }}>
+                ✅ Firebase Auth와 연동되어 실제 로그인 비밀번호가 변경됩니다.
+              </Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setResetPasswordDialogOpen(false)}
+            disabled={resetPasswordLoading}
+          >
+            {resetPasswordLoading ? '처리 중...' : '취소'}
+          </Button>
+          <Button
+            onClick={handlePasswordResetConfirm}
+            color={resetPasswordLoading ? 'primary' : 'warning'}
+            variant="contained"
+            disabled={resetPasswordLoading}
+            startIcon={resetPasswordLoading ? <CircularProgress size={20} color="inherit" /> : <VpnKeyIcon />}
+          >
+            {resetPasswordLoading ? '처리 중...' : '초기화 실행'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 사용자 수정 다이얼로그 */}
+      <Dialog
+        open={editDialogOpen}
+        onClose={handleEditDialogClose}
+        disableEscapeKeyDown={editLoading}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          ✏️ 사용자 정보 수정
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+              {/* 사용자 기본 정보 */}
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                      휴대폰번호(ID)
+                    </Typography>
+                    <Typography variant="body1" fontWeight="medium">
+                      {userToEdit?.mobile ? formatMobile(userToEdit.mobile) : ''}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                      이름
+                    </Typography>
+                    <Typography variant="body1" fontWeight="medium">
+                      {userToEdit?.name}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                      역할
+                    </Typography>
+                    <Typography variant="body1" fontWeight="medium">
+                      {userToEdit?.role}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Paper>
+
+              {/* 상태 변경 */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" fontWeight="medium" sx={{ mb: 2 }}>
+                  계정 상태
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Typography variant="body2" sx={{ flex: 1 }}>
+                    계정 활성 상태
+                  </Typography>
+                  <Switch
+                    checked={editFormData.isActive}
+                    onChange={(e) => handleStatusToggle(e.target.checked)}
+                    disabled={editLoading}
+                    color="success"
+                  />
+                  <Chip
+                    label={editFormData.isActive ? '활성' : '비활성'}
+                    size="small"
+                    color={editFormData.isActive ? 'success' : 'default'}
+                  />
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  비활성 계정은 로그인할 수 없습니다.
+                </Typography>
+              </Box>
+
+              {/* 비밀번호 초기화 */}
+              <Box>
+                <Typography variant="subtitle1" fontWeight="medium" sx={{ mb: 2 }}>
+                  비밀번호 관리
+                </Typography>
+                <Box sx={{ p: 2, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.200' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2">
+                      비밀번호 초기화
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      color="warning"
+                      startIcon={<VpnKeyIcon />}
+                      onClick={() => userToEdit && handlePasswordResetClick(userToEdit)}
+                    >
+                      초기화
+                    </Button>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    비밀번호를 휴대폰 뒷자리 4자리 2회 반복으로 초기화합니다. (예: 5678 → 56785678)
+                  </Typography>
+                </Box>
+              </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={handleEditDialogClose}
+            disabled={editLoading}
+          >
+            닫기
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 고객사 상세 정보 모달 */}
+      <Dialog
+        open={customerDetailModalOpen}
+        onClose={handleCustomerDetailsClose}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          고객사 상세 정보
+        </DialogTitle>
+        <DialogContent>
+          {modalLoading ? (
+            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+              <CircularProgress />
+              <Typography variant="body2" sx={{ ml: 2 }}>
+                고객사 정보를 불러오는 중...
+              </Typography>
+            </Box>
+          ) : modalCustomerDetails.length > 0 ? (
+            <Box sx={{ pt: 1 }}>
+              {modalCustomerDetails.map((customer, index) => (
+                <Paper
+                  key={customer.businessNumber}
+                  sx={{
+                    p: 2,
+                    mb: index < modalCustomerDetails.length - 1 ? 2 : 0,
+                    border: '1px solid',
+                    borderColor: 'divider'
+                  }}
+                >
+                  <Grid container spacing={2}>
+                    <Grid size={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        사업자등록번호
+                      </Typography>
+                      <Typography variant="body1" fontWeight="medium">
+                        {customer.businessNumber}
+                      </Typography>
+                    </Grid>
+                    <Grid size={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        상호명
+                      </Typography>
+                      <Typography variant="body1" fontWeight="medium">
+                        {customer.businessName}
+                      </Typography>
+                    </Grid>
+                    <Grid size={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        대표자
+                      </Typography>
+                      <Typography variant="body1" fontWeight="medium">
+                        {customer.president}
+                      </Typography>
+                    </Grid>
+                    <Grid size={6}>
+                      <Typography variant="body2" color="text.secondary">
+                        고객사 유형
+                      </Typography>
+                      <Typography variant="body1">
+                        {customer.customerType}
+                      </Typography>
+                    </Grid>
+                    <Grid size={6}>
+                      <Typography variant="body2" color="text.secondary">
+                        할인율
+                      </Typography>
+                      <Typography variant="body1">
+                        {customer.discountRate}%
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              ))}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+              연결된 고객사 정보가 없습니다.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCustomerDetailsClose}>
+            닫기
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+    </Box>
+  );
+};
+
+export default UserSettings;
