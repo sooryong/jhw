@@ -19,8 +19,7 @@ import {
   limit,
   Timestamp,
   QueryDocumentSnapshot,
-  runTransaction,
-  setDoc
+  runTransaction
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type {

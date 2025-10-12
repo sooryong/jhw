@@ -9,7 +9,7 @@
 import React, { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { AuthContext } from './AuthContext';
 import type { AuthContextType } from './AuthContext';

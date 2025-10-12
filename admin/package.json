@@ -1,8 +1,8 @@
 {
-  "name": "jws-admin",
+  "name": "jhw-admin",
   "private": true,
-  "version": "2.0.0",
-  "description": "JWS Platform v2.0 - Admin System",
+  "version": "2.1.0",
+  "description": "JHW Platform v2.1 - Admin System",
   "type": "module",
   "scripts": {
     "dev": "vite",

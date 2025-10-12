@@ -1,0 +1,17 @@
+{
+  "projects": {
+    "default": "jinhyun-wholesale"
+  },
+  "targets": {
+    "jinhyun-wholesale": {
+      "hosting": {
+        "admin": [
+          "jinhyun-admin"
+        ],
+        "shop": [
+          "jinhyun-shop"
+        ]
+      }
+    }
+  }
+}

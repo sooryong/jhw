@@ -1,0 +1,118 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function: Get user role by authUid (requires query)
+    function getUserRole(authUid) {
+      return get(/databases/$(database)/documents/users/$(authUid)).data.role;
+    }
+
+    match /users/{userMobile} {
+      // 자기 자신의 문서 읽기/쓰기 (authUid 필드로 본인 확인)
+      allow read, write: if request.auth != null &&
+        resource.data.authUid == request.auth.uid;
+
+      // admin은 모든 사용자 읽기/쓰기 가능
+      // Note: users 컬렉션은 이제 휴대폰번호를 문서 ID로 사용하므로,
+      // admin 확인을 위해서는 authUid로 쿼리하는 대신, 모든 읽기를 허용하고
+      // 애플리케이션 레벨에서 권한을 제어합니다.
+      allow read: if request.auth != null;
+
+      // 쓰기는 엄격하게 제어: authUid가 일치하거나 기존 데이터가 없는 경우(신규 생성)만 허용
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && resource.data.authUid == request.auth.uid;
+      allow delete: if false; // 삭제는 Cloud Function에서만 가능
+    }
+
+    match /referenceData/{document} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // 고객사 관리 (customers 컬렉션)
+    match /customers/{businessNumber} {
+      // 인증된 모든 사용자에게 읽기 허용 (애플리케이션 레벨에서 권한 제어)
+      allow read: if request.auth != null;
+
+      // 쓰기는 인증된 사용자만 가능 (애플리케이션 레벨에서 admin/staff 제어)
+      allow write: if request.auth != null;
+    }
+
+    // 공급사 관리 (suppliers 컬렉션)
+    match /suppliers/{businessNumber} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 상품 관리 (products 컬렉션)
+    match /products/{productId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 상품 코드 카운터 (productCounters 컬렉션)
+    match /productCounters/{counterId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // SMS 수신자 관리 (smsRecipients 컬렉션)
+    match /smsRecipients/{recipientId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // SMS 센터 수신자 관리 (smsCenterRecipients 컬렉션)
+    match /smsCenterRecipients/{recipientId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // SMS 발송 이력 (smsHistory 컬렉션)
+    match /smsHistory/{historyId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 시스템 설정 (settings 컬렉션)
+    match /settings/{settingId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 매출주문 관리 (saleOrders 컬렉션)
+    match /saleOrders/{orderId} {
+      // 인증된 모든 사용자: 읽기/쓰기 허용 (비즈니스 로직은 앱에서 처리)
+      allow read, write: if request.auth != null;
+    }
+
+    // 매입주문 관리 (purchaseOrders 컬렉션)
+    match /purchaseOrders/{orderId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 확정 이력 관리 (confirmationHistory 컬렉션)
+    match /confirmationHistory/{historyId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 매입 원장 관리 (purchaseLedgers 컬렉션)
+    match /purchaseLedgers/{ledgerId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // [DEPRECATED] 일일확정 상태 관리 (dailyConfirmationStatus 컬렉션)
+    // → dailyOrderCycles로 마이그레이션됨. 하위 호환성을 위해 유지
+    match /dailyConfirmationStatus/{statusId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 일일 주문 사이클 관리 (dailyOrderCycles 컬렉션)
+    match /dailyOrderCycles/{cycleId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 카운터 관리 (lastCounters 컬렉션) - 주문 ID 자동 생성용
+    match /lastCounters/{counterId} {
+      // 인증된 모든 사용자: 읽기/쓰기 허용 (주문 생성 시 필요)
+      allow read, write: if request.auth != null;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

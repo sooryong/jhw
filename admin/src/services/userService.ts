@@ -4,7 +4,7 @@
  * 주요 내용: Firebase users 컬렉션 관련 서비스 함수 (번호 정규화 규칙 적용)
  */
 
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions, auth } from '../config/firebase';
 import type { JWSUser, JWSUserDisplay } from '../types/user';

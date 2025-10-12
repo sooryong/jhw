@@ -1,0 +1,35 @@
+rules_version = '2';
+
+// Craft rules based on data in your Firestore database
+// allow write: if firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Images in the 'images' folder
+    match /images/{allPaths=**} {
+      // Allow read if signed in
+      allow read: if request.auth != null;
+
+      // Allow write if signed in and file size is less than 5MB
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+
+      // Allow delete if signed in
+      allow delete: if request.auth != null;
+    }
+
+    // Product images folder
+    match /products/{productId}/images/{imageId} {
+      // Allow read if signed in
+      allow read: if request.auth != null;
+
+      // Allow write if signed in and valid image file
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+
+      // Allow delete if signed in
+      allow delete: if request.auth != null;
+    }
+  }
+}
