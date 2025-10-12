@@ -256,7 +256,7 @@ const DailyOrderManagementPage = () => {
           }}
         >
           {/* 헤더 */}
-          <Box sx={{ p: 2, pb: 1 }}>
+          <Box sx={{ p: 3, pb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <AssignmentIcon sx={{ mr: 1.5, color: 'primary.main', fontSize: 28 }} />
@@ -285,7 +285,7 @@ const DailyOrderManagementPage = () => {
           </Box>
 
           {/* 4-Panel Time-based Workflow */}
-          <Box sx={{ px: 2, pb: 2, flexGrow: 1 }}>
+          <Box sx={{ px: 3, pb: 2, flexGrow: 1 }}>
             {/* Panel 1: 정규 매출주문 (Regular Sales Orders) */}
             <Box sx={{ mb: 2 }}>
               <Grid container spacing={2}>

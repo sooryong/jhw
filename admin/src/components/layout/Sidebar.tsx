@@ -101,13 +101,13 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
     if (isAdminOrStaff) {
       baseItems.push(
         {
-          text: '입고관리',
+          text: '일일주문 입고',
           icon: <MoveToInbox />,
           path: '/orders/inbound',
           implemented: true,
         },
         {
-          text: '출하관리',
+          text: '일일주문 출하',
           icon: <LocalShipping />,
           path: '/outbound',
           implemented: false,
