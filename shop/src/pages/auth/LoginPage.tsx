@@ -38,10 +38,16 @@ const LoginPage: React.FC = () => {
   const { user, login, loading } = useAuth();
   const navigate = useNavigate();
 
-  // 이미 로그인된 사용자는 고객사 선택 페이지로 리다이렉트
+  // 이미 로그인된 사용자 처리
   useEffect(() => {
     if (user && !loading) {
-      navigate('/shop/select-customer', { replace: true });
+      // 비밀번호 변경이 필요한 경우 비밀번호 변경 페이지로 리다이렉트
+      if (user.requiresPasswordChange) {
+        navigate('/auth/change-password', { replace: true });
+      } else {
+        // 그렇지 않으면 고객사 선택 페이지로 리다이렉트
+        navigate('/shop/select-customer', { replace: true });
+      }
     }
   }, [user, loading, navigate]);
 
@@ -56,7 +62,9 @@ const LoginPage: React.FC = () => {
     try {
       setError('');
       await login(phoneNumber, password);
-      navigate('/shop/select-customer', { replace: true });
+
+      // 로그인 성공 후 user 상태가 업데이트될 때까지 기다림
+      // useEffect에서 처리됨
     } catch (err) {
       setError(err instanceof Error ? err.message : '로그인 중 오류가 발생했습니다.');
     }
@@ -195,7 +203,7 @@ const LoginPage: React.FC = () => {
 
           <Box sx={{ mt: 2, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-              진현유통 쇼핑몰 v2.1.0
+              진현유통 쇼핑몰 v0.9.0
             </Typography>
           </Box>
         </Paper>

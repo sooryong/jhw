@@ -179,6 +179,7 @@ const SMSCenterPage = () => {
         return overallResult;
 
       } catch (error) {
+      // Error handled silently
 
         // 에러 발생 시 진행 상태 정리
         setSendingProgress({

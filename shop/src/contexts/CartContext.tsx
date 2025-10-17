@@ -176,6 +176,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         const cartItems = JSON.parse(savedCart) as CartItem[];
         dispatch({ type: 'SET_CART', payload: cartItems });
       } catch (error) {
+      // Error handled silently
         console.error('장바구니 로드 실패:', error);
         localStorage.removeItem(cartKey);
       }

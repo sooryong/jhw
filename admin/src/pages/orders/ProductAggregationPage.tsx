@@ -12,7 +12,6 @@ import {
   Typography,
   Button,
   CircularProgress,
-  Chip,
   IconButton,
   Tabs,
   Tab,
@@ -25,7 +24,10 @@ import {
   Receipt as ReceiptIcon
 } from '@mui/icons-material';
 import { DataGrid, type GridColDef, type GridRowsProp } from '@mui/x-data-grid';
+import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import dailySaleOrderAggregationService from '../../services/dailySaleOrderAggregationService';
+import dailySaleOrderFlowService from '../../services/dailySaleOrderFlowService';
 import ProductAggregationDetailDialog from '../../components/orders/ProductAggregationDetailDialog';
 
 const ProductAggregationPage = () => {
@@ -40,13 +42,40 @@ const ProductAggregationPage = () => {
 
   // 다이얼로그 상태
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [selectedProduct, setSelectedProduct] = useState<unknown>(null);
 
   // 전체 집계 데이터 (상세 정보용)
-  const [aggregationData, setAggregationData] = useState<any>(null);
+  const [aggregationData, setAggregationData] = useState<unknown>(null);
 
   useEffect(() => {
     loadData();
+
+    // Firestore 실시간 리스너 설정
+    let unsubscribe: (() => void) | null = null;
+
+    const setupListener = async () => {
+      const status = await dailySaleOrderFlowService.getStatus();
+      const resetAt = status.resetAt || new Date(new Date().setHours(0, 0, 0, 0));
+
+      const saleOrdersQuery = query(
+        collection(db, 'saleOrders'),
+        where('placedAt', '>=', Timestamp.fromDate(resetAt))
+      );
+
+      unsubscribe = onSnapshot(saleOrdersQuery, (snapshot) => {
+        if (snapshot.docChanges().length > 0) {
+          loadData();
+        }
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const loadData = async () => {
@@ -56,7 +85,7 @@ const ProductAggregationPage = () => {
       setAggregationData(data); // 전체 데이터 저장
 
       // 카테고리별 상품 집계 생성
-      const productList: any[] = [];
+      const productList: unknown[] = [];
       const categorySet = new Set<string>();
       let productId = 0;
 
@@ -70,12 +99,12 @@ const ProductAggregationPage = () => {
 
             if (totalQuantity > 0) {
               productId++;
-              const currentStock = (product as any).currentStock || 0;
+              const currentStock = (product as unknown).currentStock || 0;
               productList.push({
                 id: productId,
                 category: category,
                 productName: product.productName,
-                productId: (product as any).productCode,
+                productId: (product as unknown).productCode,
                 specification: product.specification || '-',
                 totalQuantity: totalQuantity,
                 currentStock: currentStock,
@@ -111,6 +140,7 @@ const ProductAggregationPage = () => {
       };
       setStats(initialStats);
     } catch (error) {
+      // Error handled silently
       console.error('Error loading data:', error);
     } finally {
       setLoading(false);
@@ -120,12 +150,12 @@ const ProductAggregationPage = () => {
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setSelectedTab(newValue);
 
-    let filteredProducts: any[];
+    let filteredProducts: unknown[];
     if (newValue === 0) {
-      filteredProducts = allProducts as any[];
+      filteredProducts = allProducts as unknown[];
     } else {
       const category = categories[newValue - 1];
-      filteredProducts = (allProducts as any[]).filter(p => p.category === category);
+      filteredProducts = (allProducts as unknown[]).filter(p => p.category === category);
     }
 
     setProductAggregation(filteredProducts);
@@ -141,7 +171,7 @@ const ProductAggregationPage = () => {
   };
 
   // 행 클릭 핸들러
-  const handleRowClick = (params: any) => {
+  const handleRowClick = (params:unknown) => {
     if (!aggregationData) return;
 
     const productName = params.row.productName;
@@ -162,18 +192,18 @@ const ProductAggregationPage = () => {
   };
 
   // 집계 데이터에서 상품 상세 정보 추출
-  const extractProductDetail = (data: any, category: string, productName: string) => {
+  const extractProductDetail = (data: unknown, category: string, productName: string) => {
     if (!data || !data.categories || !data.categories[category]) return null;
 
     const categoryData = data.categories[category];
-    let productInfo: any = null;
-    const suppliers: any[] = [];
-    const orders: any[] = [];
+    let productInfo: unknown = null;
+    const suppliers: unknown[] = [];
+    const orders: unknown[] = [];
     let firstSupplierName = '';
 
     // 공급사별 상품 정보 수집
-    categoryData.suppliers.forEach((supplier: any) => {
-      const product = supplier.products.find((p: any) => p.productName === productName);
+    categoryData.suppliers.forEach((supplier:unknown) => {
+      const product = supplier.products.find((p:unknown) => p.productName === productName);
       if (product) {
         if (!productInfo) {
           firstSupplierName = supplier.supplierName;
@@ -200,8 +230,8 @@ const ProductAggregationPage = () => {
 
     // 주문 정보 수집
     if (data.orders) {
-      data.orders.forEach((order: any) => {
-        const orderItem = order.orderItems?.find((item: any) => item.productName === productName);
+      data.orders.forEach((order:unknown) => {
+        const orderItem = order.orderItems?.find((item:unknown) => item.productName === productName);
         if (orderItem) {
           orders.push({
             orderNumber: order.saleOrderNumber,
@@ -288,7 +318,7 @@ const ProductAggregationPage = () => {
       type: 'number',
       align: 'right',
       headerAlign: 'right',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => value?.toLocaleString()
     }
   ];
 

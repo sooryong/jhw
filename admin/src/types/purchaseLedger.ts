@@ -24,7 +24,7 @@ export interface PurchaseLedgerItem {
 // 매입 원장
 export interface PurchaseLedger {
   // 기본 식별
-  purchaseLedgerId: string;    // 매입원장번호 (PL-YYYYMMDD-00001)
+  purchaseLedgerNumber: string;    // 매입원장번호 (PL-YYMMDD-001)
   purchaseOrderNumber: string;     // 원본 매입주문번호 (참조용)
   supplierId: string;          // 공급사 사업자번호 (하이픈 제거)
 
@@ -86,7 +86,7 @@ export const isValidPurchaseLedger = (data: unknown): data is PurchaseLedger => 
   const pl = data as PurchaseLedger;
   return (
     pl &&
-    typeof pl.purchaseLedgerId === 'string' &&
+    typeof pl.purchaseLedgerNumber === 'string' &&
     typeof pl.purchaseOrderNumber === 'string' &&
     typeof pl.supplierId === 'string' &&
     Array.isArray(pl.ledgerItems) &&

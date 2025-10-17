@@ -24,7 +24,9 @@ import { DataGrid, type GridColDef, GridFooterContainer, GridPagination } from '
 import type { PurchaseOrder } from '../../types/purchaseOrder';
 import purchaseOrderService from '../../services/purchaseOrderService';
 import productService from '../../services/productService';
+import { supplierService } from '../../services/supplierService';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatMobile } from '../../utils/numberUtils';
 
 interface PurchaseOrderDetailDialogProps {
   open: boolean;
@@ -48,8 +50,21 @@ const PurchaseOrderDetailDialog = ({
     message: string;
     severity: 'success' | 'error' | 'info';
   }>({ open: false, message: '', severity: 'info' });
-  const [orderItemsWithPrice, setOrderItemsWithPrice] = useState<Array<any>>([]);
+  const [orderItemsWithPrice, setOrderItemsWithPrice] = useState<Array<{
+    id: number;
+    productId: string;
+    productName: string;
+    specification: string;
+    quantity: number;
+    category: string;
+    unitPrice: number;
+    lineTotal: number;
+  }>>([]);
   const [loadingPrices, setLoadingPrices] = useState(true);
+  const [primaryContactMobile, setPrimaryContactMobile] = useState<string>('');
+  const [primaryContactName, setPrimaryContactName] = useState<string>('');
+  const [secondaryContactMobile, setSecondaryContactMobile] = useState<string>('');
+  const [secondaryContactName, setSecondaryContactName] = useState<string>('');
 
   // order가 변경될 때 currentStatus 동기화
   useEffect(() => {
@@ -57,6 +72,27 @@ const PurchaseOrderDetailDialog = ({
       setCurrentStatus(order.status);
     }
   }, [order]);
+
+  // 공급사 연락처 정보 조회
+  useEffect(() => {
+    const fetchSupplierContacts = async () => {
+      if (!order) return;
+
+      try {
+        const supplier = await supplierService.getSupplierById(order.supplierId);
+        setPrimaryContactMobile(supplier?.primaryContact?.mobile || '');
+        setPrimaryContactName(supplier?.primaryContact?.name || '');
+        setSecondaryContactMobile(supplier?.secondaryContact?.mobile || '');
+        setSecondaryContactName(supplier?.secondaryContact?.name || '');
+      } catch (error) {
+        console.error('공급사 연락처 조회 실패:', error);
+      }
+    };
+
+    if (order && open) {
+      fetchSupplierContacts();
+    }
+  }, [order, open]);
 
   // 각 상품의 매입단가를 조회하여 orderItems에 추가
   useEffect(() => {
@@ -79,6 +115,7 @@ const PurchaseOrderDetailDialog = ({
               lineTotal
             };
           } catch (error) {
+      // Error handled silently
             console.error(`상품 ${item.productId} 정보 조회 실패:`, error);
             return {
               id: index + 1,
@@ -119,7 +156,7 @@ const PurchaseOrderDetailDialog = ({
       setCurrentStatus(newStatus as PurchaseOrder['status']);
 
       const statusMessages: Record<string, string> = {
-        placed: '주문이 발주되었습니다.',
+        placed: '주문이 생성되었습니다.',
         confirmed: '주문이 확정되었습니다.',
         pended: '주문이 보류되었습니다.',
         cancelled: '주문이 취소되었습니다.',
@@ -138,11 +175,12 @@ const PurchaseOrderDetailDialog = ({
           onStatusChanged();
         }
       }, 500);
-    } catch (error: any) {
+    } catch (error) {
+      // Error handled silently
       console.error('상태 변경 실패:', error);
       setSnackbar({
         open: true,
-        message: error.message || '상태 변경에 실패했습니다.',
+        message: (error as Error).message || '상태 변경에 실패했습니다.',
         severity: 'error'
       });
     } finally {
@@ -150,9 +188,9 @@ const PurchaseOrderDetailDialog = ({
     }
   };
 
-  const formatDate = (timestamp: any) => {
+  const formatDate = (timestamp: unknown) => {
     if (!timestamp) return '-';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const date = (timestamp as { toDate?: () => Date }).toDate ? (timestamp as { toDate: () => Date }).toDate() : new Date(timestamp as string | number | Date);
     return date.toLocaleString('ko-KR', {
       month: '2-digit',
       day: '2-digit',
@@ -189,7 +227,7 @@ const PurchaseOrderDetailDialog = ({
       minWidth: 80,
       align: 'center',
       headerAlign: 'center',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => (value as number)?.toLocaleString()
     },
     {
       field: 'unitPrice',
@@ -198,7 +236,7 @@ const PurchaseOrderDetailDialog = ({
       minWidth: 100,
       align: 'right',
       headerAlign: 'right',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => (value as number)?.toLocaleString()
     },
     {
       field: 'lineTotal',
@@ -207,12 +245,11 @@ const PurchaseOrderDetailDialog = ({
       minWidth: 100,
       align: 'right',
       headerAlign: 'right',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => (value as number)?.toLocaleString()
     }
   ];
 
   // 합계 계산
-  const totalQuantity = order.orderItems.reduce((sum, item) => sum + item.quantity, 0);
   const totalAmount = orderItemsWithPrice.reduce((sum, item) => sum + (item.lineTotal || 0), 0);
 
   // 커스텀 DataGrid Footer (페이지네이션 + SMS 재발송/닫기 버튼)
@@ -250,6 +287,24 @@ const PurchaseOrderDetailDialog = ({
   const handleResendSms = async () => {
     if (!order) return;
 
+    // 주담당자와 부담당자 확인
+    const recipients: { name: string; mobile: string }[] = [];
+    if (primaryContactMobile && primaryContactName) {
+      recipients.push({ name: primaryContactName, mobile: primaryContactMobile });
+    }
+    if (secondaryContactMobile && secondaryContactName) {
+      recipients.push({ name: secondaryContactName, mobile: secondaryContactMobile });
+    }
+
+    if (recipients.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'SMS 수신자(주담당자 또는 부담당자)가 설정되지 않았습니다.',
+        severity: 'error'
+      });
+      return;
+    }
+
     setSendingSms(true);
     try {
       const result = await purchaseOrderService.sendBatchSms([order.purchaseOrderNumber]);
@@ -261,9 +316,13 @@ const PurchaseOrderDetailDialog = ({
           'confirmed'
         );
 
+        // 발송 결과 계산
+        const totalCount = recipients.length;
+        const successList = recipients.map(r => `${r.name}(${formatMobile(r.mobile)})`).join(', ');
+
         setSnackbar({
           open: true,
-          message: 'SMS 발송 및 주문 확정이 완료되었습니다.',
+          message: `SMS 발송 완료: 성공 ${totalCount}건\n${successList}`,
           severity: 'success'
         });
 
@@ -271,23 +330,25 @@ const PurchaseOrderDetailDialog = ({
         if (onStatusChanged) {
           onStatusChanged();
         }
-
-        // 다이얼로그 닫기
-        setTimeout(() => {
-          onClose();
-        }, 1000);
       } else {
+        // 발송 실패
+        const totalCount = recipients.length;
+        const failedList = recipients.map(r => `${r.name}(${formatMobile(r.mobile)})`).join(', ');
+
         setSnackbar({
           open: true,
-          message: `SMS 발송 실패: ${result.results[0]?.error || '알 수 없는 오류'}`,
+          message: `SMS 발송 실패: 실패 ${totalCount}건\n${failedList}\n오류: ${result.results[0]?.error || '알 수 없는 오류'}`,
           severity: 'error'
         });
       }
     } catch (error) {
       console.error('SMS 재발송 중 오류:', error);
+      const totalCount = recipients.length;
+      const recipientList = recipients.map(r => `${r.name}(${formatMobile(r.mobile)})`).join(', ');
+
       setSnackbar({
         open: true,
-        message: 'SMS 발송 중 오류가 발생했습니다.',
+        message: `SMS 발송 중 오류 발생: 실패 ${totalCount}건\n${recipientList}`,
         severity: 'error'
       });
     } finally {
@@ -332,14 +393,26 @@ const PurchaseOrderDetailDialog = ({
             </Box>
           </Box>
 
-          {/* 발주일시 */}
+          {/* 생성일시 */}
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              발주일시
+              생성일시
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
               <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
                 {formatDate(order.placedAt)}
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* 금액 */}
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              금액
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
+              <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem', color: 'primary.main' }}>
+                {totalAmount.toLocaleString()}원
               </Typography>
             </Box>
           </Box>
@@ -372,74 +445,100 @@ const PurchaseOrderDetailDialog = ({
             </Box>
           )}
 
-          {/* 상품 종류 */}
+          {/* 주담당자 */}
+          {primaryContactMobile && (
+            <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                주담당자
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
+                <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                  {formatMobile(primaryContactMobile)}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+
+          {/* 부담당자 */}
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              상품 종류
+              부담당자
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
               <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                {order.itemCount.toLocaleString()}종
+                {secondaryContactMobile ? formatMobile(secondaryContactMobile) : '-'}
               </Typography>
             </Box>
           </Box>
 
-          {/* 상품 수량 */}
+          {/* SMS 발송 버튼 */}
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              상품 수량
+            <Typography variant="body2" sx={{ mb: 1, color: 'primary.main', fontWeight: 600 }}>
+              SMS 발송
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
-              <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                {totalQuantity.toLocaleString()}개
-              </Typography>
-            </Box>
-          </Box>
-
-          {/* 금액 */}
-          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              금액
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
-              <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem', color: 'primary.main' }}>
-                {totalAmount.toLocaleString()}원
-              </Typography>
+              <Button
+                onClick={handleResendSms}
+                variant="contained"
+                color="primary"
+                size="small"
+                startIcon={sendingSms ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
+                disabled={sendingSms}
+                sx={{ fontSize: '0.875rem' }}
+              >
+                {sendingSms ? '발송 중...' : 'SMS 발송'}
+              </Button>
             </Box>
           </Box>
 
           {/* 상태 - 라디오버튼 */}
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            <Typography variant="body2" sx={{ mb: 1, color: 'primary.main', fontWeight: 600 }}>
               상태
             </Typography>
-            <RadioGroup
-              row
-              value={currentStatus}
-              onChange={(e) => handleStatusChange(e.target.value)}
-            >
-              <FormControlLabel
-                value="confirmed"
-                control={<Radio size="small" />}
-                label="확정"
-                disabled={!canChangeStatus || processing}
-                sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 } }}
-              />
-              <FormControlLabel
-                value="pended"
-                control={<Radio size="small" />}
-                label="보류"
-                disabled={!canChangeStatus || processing}
-                sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 } }}
-              />
-              <FormControlLabel
-                value="cancelled"
-                control={<Radio size="small" />}
-                label="취소"
-                disabled={!canChangeStatus || processing}
-                sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 } }}
-              />
-            </RadioGroup>
+            <Box sx={{
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 1,
+              px: 1.5,
+              py: 0.5,
+              bgcolor: 'grey.50'
+            }}>
+              <RadioGroup
+                row
+                value={currentStatus}
+                onChange={(e) => handleStatusChange(e.target.value)}
+              >
+                <FormControlLabel
+                  value="placed"
+                  control={<Radio size="small" />}
+                  label="생성"
+                  disabled={!canChangeStatus || processing}
+                  sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 } }}
+                />
+                <FormControlLabel
+                  value="pended"
+                  control={<Radio size="small" />}
+                  label="보류"
+                  disabled={!canChangeStatus || processing}
+                  sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 } }}
+                />
+                <FormControlLabel
+                  value="cancelled"
+                  control={<Radio size="small" />}
+                  label="취소"
+                  disabled={!canChangeStatus || processing}
+                  sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 } }}
+                />
+                <FormControlLabel
+                  value="confirmed"
+                  control={<Radio size="small" />}
+                  label="확정"
+                  disabled={!canChangeStatus || processing}
+                  sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 } }}
+                />
+              </RadioGroup>
+            </Box>
             {processing && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
                 처리 중...

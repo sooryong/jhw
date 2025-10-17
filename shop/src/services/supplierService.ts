@@ -69,7 +69,7 @@ export class SupplierService {
         })
       };
 
-      const supplierData: any = {
+      const supplierData: unknown = {
         businessNumber: businessNumberId as NormalizedBusinessNumber, // 문서 ID와 동일하게 정규화된 형식 사용
         businessName: formData.businessName,
         president: formData.president,
@@ -102,7 +102,8 @@ export class SupplierService {
       await setDoc(supplierRef, supplierData);
 
       return businessNumberId;
-    } catch {
+    } catch (error) {
+      // Error handled silently
       throw new CompanyServiceError('공급사 생성 중 오류가 발생했습니다.', 'CREATE_FAILED');
     }
   }
@@ -142,7 +143,8 @@ export class SupplierService {
       }
 
       return suppliers;
-    } catch {
+    } catch (error) {
+      // Error handled silently
       throw new CompanyServiceError('공급사 목록을 불러올 수 없습니다.', 'FETCH_FAILED');
     }
   }
@@ -175,7 +177,8 @@ export class SupplierService {
 
       const querySnapshot = await getDocs(q);
       return querySnapshot.size;
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 오류 처리: 공급사 개수 조회 실패
       throw new CompanyServiceError('공급사 개수를 불러올 수 없습니다.', 'FETCH_FAILED');
     }
@@ -196,7 +199,8 @@ export class SupplierService {
         } as Supplier;
       }
       return null;
-    } catch {
+    } catch (error) {
+      // Error handled silently
       throw new CompanyServiceError('공급사 정보를 불러올 수 없습니다.', 'FETCH_FAILED');
     }
   }
@@ -207,6 +211,7 @@ export class SupplierService {
       const businessNumberId = businessNumberUtils.normalize(businessNumber);
 
       // 사업자번호는 문서 ID이므로 변경 불가 (updateData에서 제거)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { businessNumber: _removed, ...validUpdateData } = updateData;
 
       const supplierRef = doc(db, this.collectionName, businessNumberId);
@@ -246,8 +251,9 @@ export class SupplierService {
         }
       });
 
-      await updateDoc(supplierRef, updatePayload as Record<string, any>);
-    } catch {
+      await updateDoc(supplierRef, updatePayload as Record<string, unknown>);
+    } catch (error) {
+      // Error handled silently
       throw new CompanyServiceError('공급사 정보 수정 중 오류가 발생했습니다.', 'UPDATE_FAILED');
     }
   }
@@ -262,7 +268,8 @@ export class SupplierService {
         isActive,
         updatedAt: Timestamp.now()
       });
-    } catch {
+    } catch (error) {
+      // Error handled silently
       throw new CompanyServiceError('공급사 상태 업데이트 중 오류가 발생했습니다.', 'UPDATE_FAILED');
     }
   }
@@ -273,7 +280,8 @@ export class SupplierService {
       const businessNumberId = businessNumberUtils.normalize(businessNumber);
       const supplierRef = doc(db, this.collectionName, businessNumberId);
       await deleteDoc(supplierRef);
-    } catch {
+    } catch (error) {
+      // Error handled silently
       throw new CompanyServiceError('공급사 삭제 중 오류가 발생했습니다.', 'DELETE_FAILED');
     }
   }

@@ -24,9 +24,7 @@ import {
 import {
   Search as SearchIcon,
   Business as BusinessIcon,
-  Message as MessageIcon,
 } from '@mui/icons-material';
-import type { SMSRecipient, CustomerSMSRecipients } from '../../types/company';
 import {
   formatBusinessNumber,
   formatMobile,
@@ -47,9 +45,6 @@ interface CompanyFormProps {
   businessPhone?: string;
   businessEmail?: string;
 
-  // SMS 수신자 (새로운 구조)
-  smsRecipient: CustomerSMSRecipients;
-
   // 고객사 전용 필드 (선택적)
   customerType?: string;
   discountRate?: number;
@@ -62,15 +57,17 @@ interface CompanyFormProps {
   // 읽기 전용 모드
   readOnly?: boolean;
 
-  // SMS 수신자 섹션 렌더링 여부
-  renderSmsRecipient?: boolean;
-
   // 고객사 필드 렌더링 여부
   renderCustomerFields?: boolean;
 
+  // 필드 크기
+  size?: 'small' | 'medium';
+
   // 변경 핸들러
   onChange: (field: string, value: string | number | boolean | undefined) => void;
-  onSMSRecipientUpdate: (person: 'person1' | 'person2', field: keyof SMSRecipient, value: string) => void;
+
+  // 사업자등록번호 검증 핸들러 (선택적)
+  onBusinessNumberValidate?: (businessNumber: string) => Promise<void>;
 }
 
 const CompanyForm: React.FC<CompanyFormProps> = ({
@@ -83,17 +80,16 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
   presidentMobile = '',
   businessPhone = '',
   businessEmail = '',
-  smsRecipient,
   customerType = '',
   discountRate = 0,
   customerTypes = [],
   customerTypesLoading = false,
   errors,
   readOnly = false,
-  renderSmsRecipient = true,
   renderCustomerFields = false,
+  size = 'medium',
   onChange,
-  onSMSRecipientUpdate,
+  onBusinessNumberValidate,
 }) => {
   // Daum 우편번호 서비스 로드 상태
   const [daumPostcodeLoaded, setDaumPostcodeLoaded] = useState(false);
@@ -103,11 +99,14 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
     return !!(businessNumber && businessNumber.trim());
   });
 
+  // 사업자등록번호 검증 디바운스 타이머
+  const [validationTimer, setValidationTimer] = useState<NodeJS.Timeout | null>(null);
+
 
   // Daum 우편번호 서비스 스크립트 로드
   useEffect(() => {
     const loadDaumPostcode = () => {
-      if (!(window as any).daum) {
+      if (!(window as unknown).daum) {
         const script = document.createElement('script');
         script.src = '//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
         script.async = true;
@@ -124,6 +123,29 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
     loadDaumPostcode();
   }, []);
 
+  // 사업자등록번호 입력 핸들러 (디바운스 적용)
+  const handleBusinessNumberChange = (value: string) => {
+    // 포맷팅된 형태로 표시
+    const formatted = formatBusinessNumber(value);
+    onChange('businessNumber', formatted);
+
+    // 검증 핸들러가 제공된 경우에만 검증 실행
+    if (onBusinessNumberValidate && !isBusinessNumberReadOnly && !readOnly) {
+      // 이전 타이머 취소
+      if (validationTimer) {
+        clearTimeout(validationTimer);
+      }
+
+      // 10자리(하이픈 포함 12자리)가 되면 500ms 후 검증
+      if (formatted.replace(/-/g, '').length === 10) {
+        const timer = setTimeout(() => {
+          onBusinessNumberValidate(formatted);
+        }, 500);
+        setValidationTimer(timer);
+      }
+    }
+  };
+
   // 주소 검색
   const handleAddressSearch = () => {
     if (!daumPostcodeLoaded) {
@@ -131,8 +153,8 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
       return;
     }
 
-    new ((window as any).daum as any).Postcode({
-      oncomplete: function (data: { address: string; addressType: string; bname: string; buildingName: string; }) {
+    new ((window as unknown as { daum: { Postcode: new (config: { oncomplete: (data: { address: string; addressType: string; bname: string; buildingName: string }) => void }) => { open: () => void } } }).daum.Postcode)({
+      oncomplete: function (data: { address: string; addressType: string; bname: string; buildingName: string }) {
         let fullAddress = data.address;
         let extraAddress = '';
 
@@ -173,13 +195,10 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
             >
               <TextField
                 fullWidth
+                size={size}
                 label="사업자등록번호"
                 value={businessNumber}
-                onChange={(e) => {
-                  // 입력 중에는 포맷팅된 형태로 표시
-                  const formatted = formatBusinessNumber(e.target.value);
-                  onChange('businessNumber', formatted);
-                }}
+                onChange={(e) => handleBusinessNumberChange(e.target.value)}
                 error={!!errors.businessNumber}
                 helperText={errors.businessNumber}
                 placeholder="예: 123-45-67890"
@@ -194,6 +213,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               fullWidth
+              size={size}
               label="대표자명"
               value={president}
               onChange={(e) => onChange('president', e.target.value)}
@@ -208,6 +228,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               fullWidth
+              size={size}
               label="상호명"
               value={businessName}
               onChange={(e) => onChange('businessName', e.target.value)}
@@ -220,6 +241,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               fullWidth
+              size={size}
               label="대표자 휴대폰"
               value={presidentMobile}
               onChange={(e) => {
@@ -227,7 +249,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
                 const formatted = formatMobile(e.target.value);
                 onChange('presidentMobile', formatted);
               }}
-              placeholder="010-1234-5678"
+              placeholder="01012345678"
               InputProps={{ readOnly }}
             />
           </Grid>
@@ -237,6 +259,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
             <Box sx={{ display: 'flex', gap: 1 }}>
               <TextField
                 fullWidth
+                size={size}
                 label="사업장 주소"
                 value={businessAddress}
                 onChange={(e) => onChange('businessAddress', e.target.value)}
@@ -249,6 +272,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
               {!readOnly && (
                 <Button
                   variant="outlined"
+                  size={size}
                   startIcon={<SearchIcon />}
                   sx={{ minWidth: 100, flexShrink: 0 }}
                   onClick={handleAddressSearch}
@@ -263,6 +287,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               fullWidth
+              size={size}
               label="업태"
               value={businessType}
               onChange={(e) => onChange('businessType', e.target.value)}
@@ -273,6 +298,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               fullWidth
+              size={size}
               label="종목"
               value={businessItem}
               onChange={(e) => onChange('businessItem', e.target.value)}
@@ -285,6 +311,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               fullWidth
+              size={size}
               label="회사 전화번호"
               value={businessPhone}
               onChange={(e) => {
@@ -292,13 +319,14 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
                 const formatted = formatPhone(e.target.value);
                 onChange('businessPhone', formatted);
               }}
-              placeholder="02-1234-5678"
+              placeholder="0212345678"
               InputProps={{ readOnly }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               fullWidth
+              size={size}
               label="회사 이메일"
               type="email"
               value={businessEmail}
@@ -312,7 +340,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
           {renderCustomerFields && (
             <>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <FormControl fullWidth error={!!errors.customerType} required>
+                <FormControl fullWidth size={size} error={!!errors.customerType} required>
                   <InputLabel>고객사 유형</InputLabel>
                   <Select
                     value={customerType}
@@ -332,6 +360,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
                   fullWidth
+                  size={size}
                   label="기본 할인율"
                   type="number"
                   value={discountRate}
@@ -351,77 +380,6 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
         </Grid>
       </Paper>
 
-      {/* SMS 수신자 (조건부 렌더링) */}
-      {renderSmsRecipient && (
-        <Paper sx={{ p: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-            <MessageIcon sx={{ mr: 1, color: 'primary.main' }} />
-            <Typography variant="h6">
-              SMS 수신자
-            </Typography>
-          </Box>
-
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="이름1"
-                value={smsRecipient.person1?.name || ''}
-                onChange={(e) => onSMSRecipientUpdate('person1', 'name', e.target.value)}
-                error={!!errors.smsRecipient_person1_name}
-                helperText={errors.smsRecipient_person1_name}
-                InputProps={{ readOnly }}
-                required
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="휴대폰1"
-                value={smsRecipient.person1?.mobile || ''}
-                onChange={(e) => {
-                  // 입력 중에는 포맷팅된 형태로 표시
-                  const formatted = formatMobile(e.target.value);
-                  onSMSRecipientUpdate('person1', 'mobile', formatted);
-                }}
-                error={!!errors.smsRecipient_person1_mobile}
-                helperText={errors.smsRecipient_person1_mobile}
-                placeholder="010-1234-5678"
-                InputProps={{ readOnly }}
-                required
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="이름2"
-                value={smsRecipient.person2?.name || ''}
-                onChange={(e) => onSMSRecipientUpdate('person2', 'name', e.target.value)}
-                error={!!errors.smsRecipient_person2_name}
-                helperText={errors.smsRecipient_person2_name}
-                InputProps={{ readOnly }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="휴대폰2"
-                value={smsRecipient.person2?.mobile || ''}
-                onChange={(e) => {
-                  // 입력 중에는 포맷팅된 형태로 표시
-                  const formatted = formatMobile(e.target.value);
-                  onSMSRecipientUpdate('person2', 'mobile', formatted);
-                }}
-                error={!!errors.smsRecipient_person2_mobile}
-                helperText={errors.smsRecipient_person2_mobile}
-                placeholder="010-1234-5678"
-                InputProps={{ readOnly }}
-              />
-            </Grid>
-          </Grid>
-        </Paper>
-      )}
     </>
   );
 };

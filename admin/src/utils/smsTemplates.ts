@@ -10,13 +10,13 @@ import type { PurchaseOrder } from '../types/purchaseOrder';
  * 매입주문 SMS 메시지 생성 (간결한 포맷)
  */
 export const generatePurchaseOrderMessage = (purchaseOrder: PurchaseOrder): string => {
-  // 상품 목록 생성 (<상품명 (규격): 수량> 형식)
+  // 상품 목록 생성 (<상품명 (규격): 수량개> 형식)
   const itemList = purchaseOrder.orderItems
     .map(item => {
       const productName = item.productName;
       const spec = item.specification ? ` (${item.specification})` : '';
       const quantity = item.quantity.toLocaleString('ko-KR');
-      return `<${productName}${spec}: ${quantity}>`;
+      return `<${productName}${spec}: ${quantity}개>`;
     })
     .join('\n');
 

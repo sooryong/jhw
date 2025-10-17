@@ -63,6 +63,7 @@ const CartPage: React.FC = () => {
       const allProducts = await getProducts();
       setProducts(allProducts);
     } catch (error) {
+      // Error handled silently
       console.error('상품 로드 실패:', error);
     } finally {
       setLoading(false);
@@ -156,6 +157,7 @@ const CartPage: React.FC = () => {
       setOrderSuccess(true);
 
     } catch (error) {
+      // Error handled silently
       console.error('주문 생성 실패:', error);
       setOrderError(error instanceof Error ? error.message : '주문 처리에 실패했습니다.');
     } finally {

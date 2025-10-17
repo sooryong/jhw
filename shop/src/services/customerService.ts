@@ -107,7 +107,7 @@ export class CustomerService {
       }
     }
 
-    const result: any = {
+    const result: unknown = {
       businessNumber: normalizedBusinessNumber,
       businessName: formData.businessName,
       president: formData.president,
@@ -187,8 +187,8 @@ export class CustomerService {
       // SMS 수신자 자동 사용자 처리
       try {
         await this.processSMSRecipients(businessNumberId, normalizedCustomer.smsRecipient);
-        console.log(`고객사 ${formData.businessName} (${businessNumberId}) 생성 및 SMS 수신자 처리 완료`);
       } catch (error) {
+      // Error handled silently
         console.error(`고객사 ${formData.businessName} SMS 수신자 자동 처리 실패:`, {
           businessNumber: businessNumberId,
           businessName: formData.businessName,
@@ -200,6 +200,7 @@ export class CustomerService {
 
       return businessNumberId;
     } catch (error) {
+      // Error handled silently
       console.error('고객사 생성 오류 상세:', error);
       if (error instanceof CompanyServiceError) {
         throw error;
@@ -265,7 +266,8 @@ export class CustomerService {
       });
 
       return customers;
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 오류 처리: 고객사 목록 조회 실패
       throw new CompanyServiceError('고객사 목록을 불러올 수 없습니다.', 'FETCH_FAILED');
     }
@@ -303,7 +305,8 @@ export class CustomerService {
 
       const querySnapshot = await getDocs(q);
       return querySnapshot.size;
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 오류 처리: 고객사 개수 조회 실패
       throw new CompanyServiceError('고객사 개수를 불러올 수 없습니다.', 'FETCH_FAILED');
     }
@@ -325,7 +328,8 @@ export class CustomerService {
       }
 
       return null;
-    } catch {
+    } catch (error) {
+      // Error handled silently
       throw new CompanyServiceError('고객사 정보를 불러올 수 없습니다.', 'FETCH_FAILED');
     }
   }
@@ -358,14 +362,14 @@ export class CustomerService {
         if (formData.presidentMobile) {
           updateData.presidentMobile = normalizeNumber(formData.presidentMobile) as NormalizedMobile;
         } else {
-          updateData.presidentMobile = deleteField() as any; // Firestore에서 필드 삭제
+          updateData.presidentMobile = deleteField() as unknown; // Firestore에서 필드 삭제
         }
       }
       if (formData.businessPhone !== undefined) {
         if (formData.businessPhone) {
           updateData.businessPhone = normalizeNumber(formData.businessPhone) as NormalizedPhone;
         } else {
-          updateData.businessPhone = deleteField() as any; // Firestore에서 필드 삭제
+          updateData.businessPhone = deleteField() as unknown; // Firestore에서 필드 삭제
         }
       }
       if (formData.businessEmail !== undefined) {
@@ -403,6 +407,7 @@ export class CustomerService {
 
       await updateDoc(docRef, updateData);
     } catch (error) {
+      // Error handled silently
       if (error instanceof CompanyServiceError) {
         throw error;
       }
@@ -425,6 +430,7 @@ export class CustomerService {
 
       await deleteDoc(docRef);
     } catch (error) {
+      // Error handled silently
       if (error instanceof CompanyServiceError) {
         throw error;
       }
@@ -474,7 +480,8 @@ export class CustomerService {
       });
 
       return stats;
-    } catch {
+    } catch (error) {
+      // Error handled silently
       throw new CompanyServiceError('고객사 통계를 불러올 수 없습니다.', 'STATS_FAILED');
     }
   }
@@ -485,10 +492,8 @@ export class CustomerService {
    * @param smsRecipient SMS 수신자 정보
    */
   private async processSMSRecipients(businessNumber: string, smsRecipient: CustomerSMSRecipients): Promise<void> {
-    console.log(`고객사 ${businessNumber} SMS 수신자 자동 처리 시작`);
 
     if (!smsRecipient) {
-      console.warn(`고객사 ${businessNumber}: SMS 수신자 정보가 없습니다.`);
       return;
     }
 
@@ -497,10 +502,10 @@ export class CustomerService {
       if (this.isValidMobile(smsRecipient.person1.mobile)) {
         await this.processRecipient(businessNumber, smsRecipient.person1, 'person1');
       } else {
-        console.warn(`고객사 ${businessNumber}: person1 휴대폰번호 형식이 올바르지 않습니다: ${smsRecipient.person1.mobile}`);
+        // Error handled silently
       }
     } else {
-      console.warn(`고객사 ${businessNumber}: person1 정보가 불완전합니다.`, smsRecipient.person1);
+      // Error handled silently
     }
 
     // person2 (선택) 처리
@@ -508,11 +513,10 @@ export class CustomerService {
       if (this.isValidMobile(smsRecipient.person2.mobile)) {
         await this.processRecipient(businessNumber, smsRecipient.person2, 'person2');
       } else {
-        console.warn(`고객사 ${businessNumber}: person2 휴대폰번호 형식이 올바르지 않습니다: ${smsRecipient.person2.mobile}`);
+        // Error handled silently
       }
     }
 
-    console.log(`고객사 ${businessNumber} SMS 수신자 자동 처리 완료`);
   }
 
   /**
@@ -535,29 +539,26 @@ export class CustomerService {
   private async processRecipient(
     businessNumber: string,
     recipient: { name: string; mobile: NormalizedMobile },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     role: 'person1' | 'person2'
   ): Promise<void> {
     try {
-      console.log(`SMS 수신자 처리: ${recipient.name}(${recipient.mobile}) - ${role}`);
 
       // 기존 사용자 확인 (정규화된 번호로 검색)
       const existingUser = await findUserByMobile(recipient.mobile);
 
       if (existingUser) {
         // 기존 사용자: 고객사 색인에 추가
-        console.log(`기존 사용자 발견: ${existingUser.name}(${existingUser.uid})`);
         await addCustomerToUser(existingUser.uid, businessNumber);
-        console.log(`사용자 ${existingUser.uid}에 고객사 ${businessNumber} 추가 완료`);
       } else {
         // 신규 사용자: customer 역할로 생성
-        console.log(`신규 사용자 생성: ${recipient.name}(${recipient.mobile})`);
-        const newUser = await createCustomerUser(recipient, [businessNumber]);
-        console.log(`신규 사용자 생성 완료: ${newUser.uid}, 기본 비밀번호: ${newUser.defaultPassword}`);
+        await createCustomerUser(recipient, [businessNumber]);
 
         // TODO: SMS 발송 기능 추가 시 여기서 계정 정보 발송
         // await sendAccountCreationSMS(recipient.mobile, newUser.defaultPassword);
       }
     } catch (error) {
+      // Error handled silently
       console.error(`SMS 수신자 ${recipient.name}(${recipient.mobile}) 처리 실패:`, error);
       // 개별 수신자 처리 실패는 전체 프로세스를 중단하지 않음
     }

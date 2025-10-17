@@ -89,7 +89,8 @@ const RecipientPanel: React.FC<RecipientPanelProps> = ({
     try {
       const data = await getRecipients();
       setCloudRecipients(data);
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 에러 무시
     }
   };
@@ -115,7 +116,8 @@ const RecipientPanel: React.FC<RecipientPanelProps> = ({
       setNewName('');
       // 목록 새로고침
       await loadRecipients();
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 에러 무시
     }
   };
@@ -129,7 +131,8 @@ const RecipientPanel: React.FC<RecipientPanelProps> = ({
       await deleteRecipient(recipientId);
       // 목록 새로고침
       await loadRecipients();
-    } catch {
+    } catch (error) {
+      // Error handled silently
       alert('수신자 삭제에 실패했습니다.');
     } finally {
       setDeletingId(null);
@@ -189,7 +192,7 @@ const RecipientPanel: React.FC<RecipientPanelProps> = ({
             label="휴대폰번호"
             value={newPhone}
             onChange={(e) => handlePhoneChange(e.target.value)}
-            placeholder="010-1234-5678"
+            placeholder="01012345678"
             onKeyPress={(e) => e.key === 'Enter' && handleAddRecipient()}
             sx={{
               '& .MuiInputBase-input': {

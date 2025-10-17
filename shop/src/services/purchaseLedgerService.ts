@@ -35,6 +35,7 @@ export const getAllPurchaseLedgers = async (): Promise<PurchaseLedger[]> => {
 
     return ledgers;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase ledgers:', error);
     throw new Error('매입 원장 조회 중 오류가 발생했습니다.');
   }
@@ -57,6 +58,7 @@ export const getPurchaseLedgerById = async (ledgerId: string): Promise<PurchaseL
       ...docSnap.data()
     } as unknown as PurchaseLedger;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase ledger:', error);
     throw new Error('매입 원장 조회 중 오류가 발생했습니다.');
   }
@@ -81,6 +83,7 @@ export const getPurchaseLedgersBySupplierId = async (supplierId: string): Promis
 
     return ledgers;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase ledgers by supplier:', error);
     throw new Error('공급사별 매입 원장 조회 중 오류가 발생했습니다.');
   }
@@ -109,6 +112,7 @@ export const getPurchaseLedgersByDateRange = async (
 
     return ledgers;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase ledgers by date range:', error);
     throw new Error('기간별 매입 원장 조회 중 오류가 발생했습니다.');
   }
@@ -144,6 +148,7 @@ export const getPurchaseLedgersByCategory = async (category: string): Promise<Pu
 
     return ledgers;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase ledgers by category:', error);
     throw new Error('카테고리별 매입 원장 조회 중 오류가 발생했습니다.');
   }

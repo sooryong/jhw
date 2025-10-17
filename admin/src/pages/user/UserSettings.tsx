@@ -13,9 +13,9 @@ import {
   Button,
   TextField,
   FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
   Chip,
   Alert,
   Dialog,
@@ -26,14 +26,19 @@ import {
   Switch,
   Snackbar,
   CircularProgress,
+  IconButton,
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import type { GridColDef } from '@mui/x-data-grid';
 import {
   People as PeopleIcon,
   VpnKey as VpnKeyIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { getUsers, deleteUserAccount, createUser, updateUser, resetUserPassword, findUserByMobile } from '../../services/userService';
+import { getUsers, deleteUserAccount, createUser, updateUser, resetUserPassword, findUserByMobileAndRole } from '../../services/userService';
 import { customerService } from '../../services/customerService';
 import { settingsService } from '../../services/settingsService';
 import { customerLinkService } from '../../services/customerLinkService';
@@ -67,7 +72,7 @@ const UserSettings: React.FC = () => {
   const [addFormData, setAddFormData] = useState<AddFormData>({
     name: '',
     mobile: '',
-    role: '1', // 기본값: 직원 (settings의 코드)
+    role: '2', // 기본값: 고객사 (settings의 코드)
   });
   const [addFormLoading, setAddFormLoading] = useState(false);
 
@@ -145,7 +150,7 @@ const UserSettings: React.FC = () => {
     setAddFormData({
       name: '',
       mobile: '',
-      role: '1',
+      role: '2',
     });
     if (firstFieldRef.current) {
       firstFieldRef.current.focus();
@@ -196,7 +201,7 @@ const UserSettings: React.FC = () => {
     // 휴대폰번호 정규화 (저장용)
     const normalizedMobile = normalizeNumber(addFormData.mobile);
 
-    // customer 역할인지 확인 (코드 "2")
+    // customer 또는 supplier 역할인지 확인
     const actualRole = settingsService.codeToUserRole(addFormData.role);
     let linkedCustomers: string[] = [];
 
@@ -215,7 +220,8 @@ const UserSettings: React.FC = () => {
           linkedCustomers = [];
         }
 
-      } catch {
+      } catch (error) {
+      // Error handled silently
         // SMS 수신자 확인 실패 시에도 빈 배열로 사용자 생성 계속 진행
         linkedCustomers = [];
       }
@@ -224,11 +230,11 @@ const UserSettings: React.FC = () => {
     try {
       setAddFormLoading(true);
 
-      // 휴대폰번호 중복 체크
-      const existingUser = await findUserByMobile(normalizedMobile);
+      // 휴대폰번호 + 역할 중복 체크
+      const existingUser = await findUserByMobileAndRole(normalizedMobile, actualRole);
 
       if (existingUser) {
-        setError(`이미 등록된 휴대폰 번호입니다. (등록된 사용자: ${existingUser.name})`);
+        setError(`이미 ${actualRole} 역할로 등록된 휴대폰 번호입니다. (등록된 사용자: ${existingUser.name})`);
         // 폼 초기화
         resetForm();
         return;
@@ -242,16 +248,29 @@ const UserSettings: React.FC = () => {
         requiresPasswordChange: true
       };
 
-      // customer 역할인 경우에만 linkedCustomers 필드 추가
+      // customer 역할인 경우 linkedCustomers 필드 추가
       if (actualRole === 'customer') {
         userData.linkedCustomers = (linkedCustomers || []) as NormalizedBusinessNumber[];
       }
 
+      // supplier 역할인 경우 linkedSuppliers 필드 추가 (빈 배열)
+      if (actualRole === 'supplier') {
+        userData.linkedSuppliers = [] as NormalizedBusinessNumber[];
+      }
+
       const result = await createUser(userData);
-      setSuccessMessage(`사용자가 추가되었습니다. 기본 비밀번호: ${result.defaultPassword} (첫 로그인 시 비밀번호 변경 필수)`);
+
+      // supplier 역할은 로그인 안 함
+      if (actualRole === 'supplier') {
+        setSuccessMessage(`공급사 사용자가 추가되었습니다. (Firebase Auth 미사용)`);
+      } else {
+        setSuccessMessage(`사용자가 추가되었습니다. 기본 비밀번호: ${result.defaultPassword} (첫 로그인 시 비밀번호 변경 필수)`);
+      }
+
       resetForm();
       loadUsers();
     } catch (error) {
+      // Error handled silently
       setError(error instanceof Error ? error.message : '사용자 추가 중 오류가 발생했습니다.');
     } finally {
       setAddFormLoading(false);
@@ -297,7 +316,8 @@ const UserSettings: React.FC = () => {
       setUsers(prevUsers =>
         prevUsers.map(u => u.uid === userToEdit.uid ? { ...u, isActive: checked } : u)
       );
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 실패 시 원래 상태로 복구
       setEditFormData(prev => ({ ...prev, isActive: !checked }));
       setError('계정 상태 변경 중 오류가 발생했습니다.');
@@ -327,6 +347,7 @@ const UserSettings: React.FC = () => {
       setUserToResetPassword(null);
       setSuccessMessage(`${userToResetPassword.name}님의 비밀번호가 초기화되었습니다. 해당 사용자는 다음 로그인 시 비밀번호 변경이 필요합니다.`);
     } catch (error) {
+      // Error handled silently
       setError(error instanceof Error ? error.message : '비밀번호 초기화 중 오류가 발생했습니다.');
     } finally {
       setResetPasswordLoading(false);
@@ -350,7 +371,8 @@ const UserSettings: React.FC = () => {
         }
       }
       setModalCustomerDetails(customerDetails);
-    } catch {
+    } catch (error) {
+      // Error handled silently
       setError('고객사 정보를 불러올 수 없습니다.');
     } finally {
       setModalLoading(false);
@@ -381,7 +403,8 @@ const UserSettings: React.FC = () => {
       setUserToDelete(null);
       setSuccessMessage('사용자가 완전히 삭제되었습니다. (Firebase Auth + Firestore)');
       loadUsers();
-    } catch {
+    } catch (error) {
+      // Error handled silently
       setError('사용자 삭제 중 오류가 발생했습니다.');
     } finally {
       setDeleteLoading(false);
@@ -393,6 +416,11 @@ const UserSettings: React.FC = () => {
     setUserToDelete(user);
     setDeleteDialogOpen(true);
     setDeleteLoading(false); // 다이얼로그 열 때 로딩 상태 초기화
+    // 수정 모달이 열려있으면 닫기
+    if (editDialogOpen) {
+      setEditDialogOpen(false);
+      setUserToEdit(null);
+    }
   };
 
   // 데이터그리드 컬럼 정의
@@ -448,16 +476,25 @@ const UserSettings: React.FC = () => {
       ),
     },
     {
-      field: 'linkedCustomers',
-      headerName: '고객사연결',
+      field: 'connections',
+      headerName: '연결',
       flex: 0.20, // 20%
       align: 'center',
       headerAlign: 'center',
+      valueGetter: (value, row) => {
+        if (row.role === 'customer') return row.linkedCustomers || [];
+        if (row.role === 'supplier') return row.linkedSuppliers || [];
+        return [];
+      },
       renderCell: (params) => {
         const isCustomer = params.row.role === 'customer';
-        const count = isCustomer ? (params.value?.length || 0) : 0;
+        const isSupplier = params.row.role === 'supplier';
 
-        if (!isCustomer) {
+        const customerCount = isCustomer ? (params.row.linkedCustomers?.length || 0) : 0;
+        const supplierCount = isSupplier ? (params.row.linkedSuppliers?.length || 0) : 0;
+
+        // admin, staff는 연결 없음
+        if (!isCustomer && !isSupplier) {
           return (
             <Box display="flex" alignItems="center" justifyContent="center" height="100%">
               <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.disabled' }}>
@@ -467,27 +504,55 @@ const UserSettings: React.FC = () => {
           );
         }
 
-        return (
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            height="100%"
-            onClick={count > 0 ? () => handleCustomerDetailsClick(params.value) : undefined}
-            sx={count > 0 ? { cursor: 'pointer' } : undefined}
-          >
-            <Typography
-              variant="body2"
-              sx={{
-                fontSize: '0.875rem',
-                color: count > 0 ? 'primary.main' : 'text.secondary',
-                fontWeight: count > 0 ? 600 : 400
-              }}
+        // 고객사 사용자
+        if (isCustomer) {
+          return (
+            <Box
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              height="100%"
+              onClick={customerCount > 0 ? () => handleCustomerDetailsClick(params.row.linkedCustomers) : undefined}
+              sx={customerCount > 0 ? { cursor: 'pointer' } : undefined}
             >
-              {count}
-            </Typography>
-          </Box>
-        );
+              <Typography
+                variant="body2"
+                sx={{
+                  fontSize: '0.875rem',
+                  color: customerCount > 0 ? 'primary.main' : 'text.secondary',
+                  fontWeight: customerCount > 0 ? 600 : 400
+                }}
+              >
+                {customerCount}
+              </Typography>
+            </Box>
+          );
+        }
+
+        // 공급사 사용자
+        if (isSupplier) {
+          return (
+            <Box
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              height="100%"
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  fontSize: '0.875rem',
+                  color: supplierCount > 0 ? 'secondary.main' : 'text.secondary',
+                  fontWeight: supplierCount > 0 ? 600 : 400
+                }}
+              >
+                {supplierCount}
+              </Typography>
+            </Box>
+          );
+        }
+
+        return null;
       },
     },
     {
@@ -511,8 +576,8 @@ const UserSettings: React.FC = () => {
     },
     {
       field: 'actions',
-      headerName: '작업',
-      flex: 0.20, // 20%
+      headerName: '수정',
+      width: 60,
       align: 'center',
       headerAlign: 'center',
       sortable: false,
@@ -521,66 +586,27 @@ const UserSettings: React.FC = () => {
         const isCurrentUser = currentUser?.uid === params.row.uid;
 
         return (
-          <Box display="flex" alignItems="center" justifyContent="center" height="100%" gap={0.5}>
-            <Button
-              variant="contained"
-              size="small"
-              color="primary"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEditClick(params.row);
-              }}
-              disabled={isCurrentUser}
-              sx={{
-                fontSize: '0.7rem',
-                minWidth: 'auto',
-                px: 1,
-                py: 0.25,
-                height: '22px',
-                mr: 0.5
-              }}
-              title={isCurrentUser ? '본인은 수정할 수 없습니다' : '사용자 수정'}
-            >
-              수정
-            </Button>
+          <Box display="flex" alignItems="center" justifyContent="center" height="100%">
             {isCurrentUser ? (
-              <Button
-                variant="outlined"
+              <Chip
+                label="본인"
                 size="small"
                 color="success"
-                disabled
-                sx={{
-                  fontSize: '0.7rem',
-                  minWidth: 'auto',
-                  px: 1,
-                  py: 0.25,
-                  height: '22px',
-                  opacity: 0.8
-                }}
-                title="현재 로그인한 사용자"
-              >
-                본인
-              </Button>
+                variant="outlined"
+                sx={{ fontSize: '0.65rem', height: '20px' }}
+              />
             ) : (
-              <Button
-                variant="contained"
+              <IconButton
                 size="small"
-                color="error"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDeleteClick(params.row);
+                  handleEditClick(params.row);
                 }}
-                sx={{
-                  fontSize: '0.7rem',
-                  minWidth: 'auto',
-                  px: 1,
-                  py: 0.25,
-                  height: '22px'
-                }}
-                title="사용자 삭제"
+                sx={{ color: 'primary.main' }}
+                title="사용자 수정"
               >
-                삭제
-              </Button>
+                <EditIcon fontSize="small" />
+              </IconButton>
             )}
           </Box>
         );
@@ -596,9 +622,8 @@ const UserSettings: React.FC = () => {
       overflow: 'hidden',
       overflowX: 'hidden',
       p: 3,
-      width: '80%',
+      width: '100%',
       maxWidth: '100vw',
-      margin: '0 auto',
       boxSizing: 'border-box'
     }}>
       {/* 헤더 */}
@@ -641,9 +666,9 @@ const UserSettings: React.FC = () => {
           사용자 추가
         </Typography>
 
-        <Grid container spacing={1.5}>
-          {/* 1. 휴대폰 번호 */}
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          {/* 칼럼 1 (40%): 휴대폰 번호, 이름 */}
+          <Box sx={{ flex: '0 0 40%', display: 'flex', gap: 1 }}>
             <TextField
               ref={firstFieldRef}
               label="ID(휴대폰번호)"
@@ -653,14 +678,8 @@ const UserSettings: React.FC = () => {
               fullWidth
               required
               placeholder="01012345678"
-              error={addFormData.mobile !== '' && addFormData.mobile.length < 13}
-              helperText={addFormData.mobile !== '' && addFormData.mobile.length < 13 ? '올바른 휴대폰 번호를 입력하세요' : ''}
               size="small"
             />
-          </Grid>
-
-          {/* 2. 이름 */}
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               label="이름"
               value={addFormData.name}
@@ -668,56 +687,84 @@ const UserSettings: React.FC = () => {
               onKeyDown={handleKeyDown}
               fullWidth
               required
-              error={addFormData.name !== '' && addFormData.name.trim().length < 2}
-              helperText={addFormData.name !== '' && addFormData.name.trim().length < 2 ? '이름은 2자 이상 입력하세요' : ''}
               size="small"
             />
-          </Grid>
+          </Box>
 
-          {/* 3. 역할 */}
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <FormControl fullWidth required size="small">
-              <InputLabel>역할</InputLabel>
-              <Select
-                value={userRoles.length > 0 ? addFormData.role : ''}
-                label="역할"
+          {/* 칼럼 2 (40%): 역할 선택 라디오 버튼 */}
+          <Box sx={{ flex: '1', display: 'flex', alignItems: 'center' }}>
+            <FormControl component="fieldset" fullWidth>
+              <RadioGroup
+                row
+                value={addFormData.role}
                 onChange={(e) => setAddFormData(prev => ({ ...prev, role: e.target.value }))}
-                onKeyDown={handleKeyDown}
+                sx={{ gap: 1, flexWrap: 'nowrap' }}
               >
                 {userRoles.map((userRole) => (
-                  <MenuItem key={userRole.code} value={userRole.code}>
-                    {userRole.name}
-                  </MenuItem>
+                  <FormControlLabel
+                    key={userRole.code}
+                    value={userRole.code}
+                    control={<Radio size="small" />}
+                    label={userRole.name}
+                    sx={{
+                      border: '1px solid',
+                      borderColor: addFormData.role === userRole.code ? 'primary.main' : 'divider',
+                      borderRadius: 1,
+                      px: 1.5,
+                      py: 0.5,
+                      m: 0,
+                      flex: '1',
+                      minWidth: 0,
+                      transition: 'all 0.2s',
+                      bgcolor: addFormData.role === userRole.code ? 'primary.50' : 'transparent',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        bgcolor: 'primary.50',
+                        cursor: 'pointer'
+                      },
+                      '& .MuiFormControlLabel-label': {
+                        fontSize: '0.875rem',
+                        fontWeight: addFormData.role === userRole.code ? 600 : 400,
+                        whiteSpace: 'nowrap'
+                      }
+                    }}
+                  />
                 ))}
-              </Select>
+              </RadioGroup>
             </FormControl>
-          </Grid>
+          </Box>
 
-          {/* 4. 버튼 */}
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Box sx={{ display: 'flex', gap: 1, height: '100%', alignItems: 'flex-start' }}>
-              <Button
-                variant="outlined"
-                onClick={resetForm}
-                disabled={addFormLoading}
-                fullWidth
-                size="small"
-              >
-                초기화
-              </Button>
-              <Button
-                variant="contained"
-                onClick={handleAddFormSubmit}
-                disabled={addFormLoading}
-                fullWidth
-                size="small"
-              >
-                {addFormLoading ? '추가 중...' : '추가'}
-              </Button>
-            </Box>
-          </Grid>
-
-        </Grid>
+          {/* 칼럼 3 (20%): 초기화 아이콘 버튼 + 추가 버튼 */}
+          <Box sx={{ flex: '0 0 20%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1 }}>
+            <IconButton
+              onClick={resetForm}
+              disabled={addFormLoading}
+              color="default"
+              title="초기화 (ESC)"
+              size="small"
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                '&:hover': {
+                  borderColor: 'primary.main',
+                  bgcolor: 'action.hover'
+                }
+              }}
+            >
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+            <Button
+              variant="contained"
+              onClick={handleAddFormSubmit}
+              disabled={addFormLoading}
+              size="small"
+              startIcon={<AddIcon />}
+              sx={{ height: '40px', minWidth: '120px' }}
+            >
+              {addFormLoading ? '추가 중...' : '추가'}
+            </Button>
+          </Box>
+        </Box>
       </Paper>
       {/* 에러 표시 */}
       {error && (
@@ -747,7 +794,6 @@ const UserSettings: React.FC = () => {
               disableColumnResize
               disableColumnMenu
               getRowId={(row) => row.uid}
-              rowHeight={60}
               getRowClassName={(params) =>
                 !params.row.isActive ? 'inactive-user-row' : ''
               }
@@ -1015,28 +1061,56 @@ const UserSettings: React.FC = () => {
                 </Typography>
               </Box>
 
-              {/* 비밀번호 초기화 */}
+              {/* 비밀번호 초기화 (supplier 제외) */}
+              {userToEdit?.role !== 'supplier' && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle1" fontWeight="medium" sx={{ mb: 2 }}>
+                    비밀번호 관리
+                  </Typography>
+                  <Box sx={{ p: 2, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.200' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="body2">
+                        비밀번호 초기화
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        color="warning"
+                        startIcon={<VpnKeyIcon />}
+                        onClick={() => userToEdit && handlePasswordResetClick(userToEdit)}
+                      >
+                        초기화
+                      </Button>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      비밀번호를 휴대폰 뒷자리 4자리 2회 반복으로 초기화합니다. (예: 5678 → 56785678)
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+
+              {/* 사용자 삭제 */}
               <Box>
                 <Typography variant="subtitle1" fontWeight="medium" sx={{ mb: 2 }}>
-                  비밀번호 관리
+                  위험 구역
                 </Typography>
-                <Box sx={{ p: 2, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.200' }}>
+                <Box sx={{ p: 2, bgcolor: 'error.50', borderRadius: 1, border: '1px solid', borderColor: 'error.200' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                     <Typography variant="body2">
-                      비밀번호 초기화
+                      사용자 완전 삭제
                     </Typography>
                     <Button
-                      variant="outlined"
+                      variant="contained"
                       size="small"
-                      color="warning"
-                      startIcon={<VpnKeyIcon />}
-                      onClick={() => userToEdit && handlePasswordResetClick(userToEdit)}
+                      color="error"
+                      startIcon={<DeleteIcon />}
+                      onClick={() => userToEdit && handleDeleteClick(userToEdit)}
                     >
-                      초기화
+                      삭제
                     </Button>
                   </Box>
                   <Typography variant="caption" color="text.secondary">
-                    비밀번호를 휴대폰 뒷자리 4자리 2회 반복으로 초기화합니다. (예: 5678 → 56785678)
+                    Firebase Auth와 Firestore에서 모든 데이터가 완전히 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
                   </Typography>
                 </Box>
               </Box>

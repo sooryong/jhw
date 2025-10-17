@@ -11,25 +11,29 @@ import type { ReactNode } from 'react';
  */
 export type DocumentType =
   | 'inbound-inspection'   // 입고 검수표
+  | 'outbound-inspection'  // 출하 검수표
   | 'outbound-shipment'    // 출하 명세서
   | 'order-receipt'        // 주문 영수증
-  | 'purchase-ledger';     // 매입 원장
+  | 'purchase-ledger'      // 매입 원장
+  | 'sale-ledger'          // 매출 원장
+  | 'sale-slip';           // 매출전표 (거래명세서)
 
 /**
  * 인쇄할 문서 정보
  */
-export interface PrintDocument<T = any> {
+export interface PrintDocument<T = unknown> {
   id: string;
   title: string;
   summary: string;
   data: T;
+  addedAt: Date; // 목록에 추가된 시간
 }
 
 /**
  * 문서 렌더러 인터페이스
  * 각 문서 타입별로 이 인터페이스를 구현해야 함
  */
-export interface DocumentRenderer<T = any> {
+export interface DocumentRenderer<T = unknown> {
   /**
    * 렌더러가 처리하는 문서 타입
    */
@@ -47,7 +51,7 @@ export interface DocumentRenderer<T = any> {
    * @param data - 문서 데이터
    * @returns 페이지별 데이터 청크 배열
    */
-  chunkPages: (data: T) => any[][];
+  chunkPages: (data: T) => unknown[][];
 
   /**
    * 특정 페이지 렌더링
@@ -62,7 +66,7 @@ export interface DocumentRenderer<T = any> {
    */
   renderPage: (
     data: T,
-    chunk: any[],
+    chunk: unknown[],
     pageIndex: number,
     totalPages: number,
     key: string,
@@ -88,4 +92,4 @@ export interface DocumentRenderer<T = any> {
 /**
  * 렌더러 레지스트리 타입
  */
-export type RendererRegistry = Map<DocumentType, DocumentRenderer<any>>;
+export type RendererRegistry = Map<DocumentType, DocumentRenderer<unknown>>;

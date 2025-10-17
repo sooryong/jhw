@@ -141,6 +141,7 @@ const OrderHistoryPage: React.FC = () => {
       }
       alert(`${order.orderItems.length}개 상품을 장바구니에 담았습니다.`);
     } catch (error) {
+      // Error handled silently
       console.error('다시주문 실패:', error);
       alert('다시주문에 실패했습니다.');
     }
@@ -161,6 +162,7 @@ const OrderHistoryPage: React.FC = () => {
       // 주문 목록 새로고침
       await loadOrders();
     } catch (error) {
+      // Error handled silently
       console.error('주문 취소 실패:', error);
       alert(error instanceof Error ? error.message : '주문 취소에 실패했습니다.');
     }

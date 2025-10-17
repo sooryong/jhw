@@ -4,7 +4,7 @@
  * 주요 내용: Firebase users 컬렉션 관련 서비스 함수 (번호 정규화 규칙 적용)
  */
 
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions, auth } from '../config/firebase';
 import type { JWSUser, JWSUserDisplay } from '../types/user';
@@ -105,6 +105,7 @@ export const findUserByMobile = async (mobile: string): Promise<JWSUser | null> 
     const userData = userDoc.data() as FirestoreUser;
     return convertFirestoreToJWSUser(userDoc.id, userData);
   } catch (error) {
+      // Error handled silently
     if (error instanceof Error) {
       throw error;
     }
@@ -128,6 +129,7 @@ export const getUserById = async (uid: string): Promise<JWSUser | null> => {
     const userData = userDoc.data() as FirestoreUser;
     return convertFirestoreToJWSUser(userDoc.id, userData);
   } catch (error) {
+      // Error handled silently
     if (error instanceof Error) {
       throw error;
     }
@@ -157,6 +159,7 @@ export const getUserByAuthUid = async (authUid: string): Promise<JWSUser | null>
 
     return convertFirestoreToJWSUser(userDoc.id, userData);
   } catch (error) {
+      // Error handled silently
     if (error instanceof Error) {
       throw error;
     }
@@ -179,7 +182,8 @@ export const getUsers = async (): Promise<JWSUser[]> => {
     });
 
     return users;
-  } catch {
+  } catch (error) {
+      // Error handled silently
     throw new Error('사용자 목록 조회 중 오류가 발생했습니다.');
   }
 };
@@ -217,6 +221,7 @@ export const createUser = async (userData: Partial<JWSUser>): Promise<{ uid: str
 
     return { uid: data.uid || '', defaultPassword: data.defaultPassword || '' };
   } catch (error) {
+      // Error handled silently
     throw new Error(error instanceof Error ? error.message : '사용자 생성 중 오류가 발생했습니다.');
   }
 };
@@ -246,8 +251,9 @@ export const updateUser = async (uid: string, updateData: Partial<JWSUser>): Pro
     // updatedAt은 serverTimestamp로 설정
     firestoreData.updatedAt = serverTimestamp();
 
-    await updateDoc(userRef, firestoreData as Record<string, any>);
+    await updateDoc(userRef, firestoreData as Record<string, unknown>);
   } catch (error) {
+      // Error handled silently
     console.error('updateUser error:', error);
     throw new Error('사용자 정보 수정 중 오류가 발생했습니다.');
   }
@@ -266,7 +272,8 @@ export const resetUserPassword = async (uid: string): Promise<void> => {
     if (!data.success) {
       throw new Error(data.error || '비밀번호 초기화에 실패했습니다.');
     }
-  } catch {
+  } catch (error) {
+      // Error handled silently
     throw new Error('비밀번호 초기화 중 오류가 발생했습니다.');
   }
 };
@@ -285,6 +292,7 @@ export const deleteUserAccount = async (uid: string): Promise<void> => {
       throw new Error(data.error || '사용자 삭제에 실패했습니다.');
     }
   } catch (error) {
+      // Error handled silently
     throw new Error(error instanceof Error ? error.message : '사용자 삭제 중 오류가 발생했습니다.');
   }
 };
@@ -322,7 +330,8 @@ export const addCustomerToUser = async (uid: string, businessNumber: string): Pr
       linkedCustomers: updatedBusinessNumbers,
       updatedAt: serverTimestamp()
     });
-  } catch {
+  } catch (error) {
+      // Error handled silently
     throw new Error('고객사를 사용자에 연결하는 중 오류가 발생했습니다.');
   }
 };
@@ -349,7 +358,8 @@ export const createCustomerUser = async (
 
     const result = await createUser(userData);
     return result;
-  } catch {
+  } catch (error) {
+      // Error handled silently
     throw new Error('SMS 수신자 사용자 생성 중 오류가 발생했습니다.');
   }
 };
@@ -379,7 +389,8 @@ export const getUsersByCustomer = async (businessNumber: string): Promise<JWSUse
     })) as JWSUser[];
 
     return users.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  } catch {
+  } catch (error) {
+      // Error handled silently
     throw new Error('고객사에 연결된 사용자 목록을 조회할 수 없습니다.');
   }
 };

@@ -113,7 +113,8 @@ const SMSSendDialog: React.FC<SMSSendDialogProps> = ({
       } else {
         setError(result.message || 'SMS 발송에 실패했습니다.');
       }
-    } catch {
+    } catch (error) {
+      // Error handled silently
       setError('SMS 발송 중 오류가 발생했습니다.');
     }
   };
@@ -132,6 +133,16 @@ const SMSSendDialog: React.FC<SMSSendDialogProps> = ({
     }
   };
 
+  // 전화번호 포맷팅 헬퍼 함수
+  const formatPhoneNumber = (phone: string): string => {
+    if (phone.length === 11) {
+      return `${phone.slice(0, 3)}-${phone.slice(3, 7)}-${phone.slice(7)}`;
+    } else if (phone.length === 10) {
+      return `${phone.slice(0, 3)}-${phone.slice(3, 6)}-${phone.slice(6)}`;
+    }
+    return phone;
+  };
+
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>{title}</DialogTitle>
@@ -146,9 +157,24 @@ const SMSSendDialog: React.FC<SMSSendDialogProps> = ({
               <TextField
                 label="전화번호"
                 value={phoneInput}
-                onChange={(e) => setPhoneInput(e.target.value)}
+                onChange={(e) => {
+                  // 숫자만 추출
+                  const numbersOnly = e.target.value.replace(/[^0-9]/g, '');
+                  // 11자리로 제한
+                  const limited = numbersOnly.slice(0, 11);
+                  // 포맷팅 적용
+                  let formatted = limited;
+                  if (limited.length >= 4) {
+                    if (limited.length >= 8) {
+                      formatted = `${limited.slice(0, 3)}-${limited.slice(3, 7)}-${limited.slice(7)}`;
+                    } else {
+                      formatted = `${limited.slice(0, 3)}-${limited.slice(3)}`;
+                    }
+                  }
+                  setPhoneInput(formatted);
+                }}
                 onKeyPress={handleKeyPress}
-                placeholder="010-1234-5678"
+                placeholder="01012345678"
                 size="small"
                 sx={{ flexGrow: 1 }}
               />
@@ -160,7 +186,7 @@ const SMSSendDialog: React.FC<SMSSendDialogProps> = ({
               {recipients.map((recipient) => (
                 <Chip
                   key={recipient}
-                  label={recipient}
+                  label={formatPhoneNumber(recipient)}
                   onDelete={() => removeRecipient(recipient)}
                   deleteIcon={<ClearIcon />}
                   size="small"

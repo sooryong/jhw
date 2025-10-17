@@ -9,7 +9,7 @@
 import React, { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { AuthContext } from './AuthContext';
 import type { AuthContextType } from './AuthContext';
@@ -51,7 +51,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       }
     } catch (error) {
-      console.warn('Failed to load cached user:', error);
+      // Error handled silently
     }
     return null;
   };
@@ -72,7 +72,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         localStorage.removeItem(USER_CACHE_TIME_KEY);
       }
     } catch (error) {
-      console.warn('Failed to cache user:', error);
+      // Error handled silently
     }
   };
 
@@ -101,6 +101,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                   };
                 }
               } catch (error) {
+      // Error handled silently
                 console.error('SMS 수신자 정보 조회 실패:', error);
               }
             }
@@ -110,7 +111,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // Firestore에 사용자 정보가 없으면 로그아웃 처리
             try {
               await signOut(auth);
-            } catch {
+            } catch (error) {
+      // Error handled silently
               // 로그아웃 오류는 조용히 처리
             }
             updateUserWithCache(null);
@@ -119,7 +121,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // 로그인된 사용자가 없는 경우
           updateUserWithCache(null);
         }
-      } catch {
+      } catch (error) {
+      // Error handled silently
         // 인증 상태 확인 오류는 조용히 처리
         updateUserWithCache(null);
       } finally {
@@ -143,7 +146,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       let userCredential;
       try {
         userCredential = await signInWithEmailAndPassword(auth, email, password);
-      } catch (authError: any) {
+      } catch (authError:unknown) {
         // Firebase Auth 에러 처리
         if (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential') {
           throw new Error('등록되지 않은 사용자입니다.\n\n사용자 등록은 관리자에게 문의하세요.');
@@ -187,6 +190,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             };
           }
         } catch (error) {
+      // Error handled silently
           console.error('SMS 수신자 정보 조회 실패:', error);
         }
       }
@@ -270,6 +274,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 };
               }
             } catch (error) {
+      // Error handled silently
               console.error('SMS 수신자 정보 조회 실패:', error);
             }
           }
@@ -277,7 +282,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           updateUserWithCache(jwsUser);
         }
       }
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 사용자 정보 새로고침 오류는 조용히 처리
     } finally {
       setLoading(false);

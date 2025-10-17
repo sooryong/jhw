@@ -19,14 +19,16 @@ import {
   Card,
   CardContent
 } from '@mui/material';
-import Grid from '@mui/material/Grid';
 import {
   ArrowBack as ArrowBackIcon,
   Receipt as ReceiptIcon,
   Inventory as InventoryIcon
 } from '@mui/icons-material';
 import { DataGrid, type GridColDef, type GridRowsProp } from '@mui/x-data-grid';
+import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import dailySaleOrderAggregationService from '../../services/dailySaleOrderAggregationService';
+import dailySaleOrderFlowService from '../../services/dailySaleOrderFlowService';
 import SaleOrderDetailDialog from '../../components/orders/SaleOrderDetailDialog';
 import type { SaleOrder } from '../../types/saleOrder';
 
@@ -48,6 +50,33 @@ const CustomerOrderListPage = () => {
 
   useEffect(() => {
     loadData();
+
+    // Firestore 실시간 리스너 설정
+    let unsubscribe: (() => void) | null = null;
+
+    const setupListener = async () => {
+      const status = await dailySaleOrderFlowService.getStatus();
+      const resetAt = status.resetAt || new Date(new Date().setHours(0, 0, 0, 0));
+
+      const ordersQuery = query(
+        collection(db, 'saleOrders'),
+        where('placedAt', '>=', Timestamp.fromDate(resetAt))
+      );
+
+      unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
+        if (snapshot.docChanges().length > 0) {
+          loadData();
+        }
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const loadData = async () => {
@@ -62,7 +91,7 @@ const CustomerOrderListPage = () => {
       setRawOrders(orders);
 
       // 주문별 집계 맵 생성
-      const orderMap = new Map<string, any>();
+      const orderMap = new Map<string, unknown>();
 
       orders.forEach(order => {
         // DB에 저장된 orderPhase 필드를 직접 사용 (타임스탬프 재계산 제거)
@@ -72,7 +101,7 @@ const CustomerOrderListPage = () => {
         if (!orderMap.has(order.id)) {
           // 주문의 총 상품 종류와 수량 계산
           const productCount = order.orderItems?.length || 0;
-          const totalQuantity = order.orderItems?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
+          const totalQuantity = order.orderItems?.reduce((sum: number, item: { quantity: number }) => sum + item.quantity, 0) || 0;
 
           orderMap.set(order.id, {
             orderId: order.saleOrderNumber,
@@ -106,6 +135,7 @@ const CustomerOrderListPage = () => {
       setTabCounts(counts);
       filterOrdersByTab(0, ordersList); // 초기에는 전체 탭
     } catch (error) {
+      // Error handled silently
       console.error('Error loading data:', error);
     } finally {
       setLoading(false);
@@ -144,7 +174,7 @@ const CustomerOrderListPage = () => {
   };
 
   // 행 클릭 핸들러
-  const handleRowClick = (params: any) => {
+  const handleRowClick = (params: { row: { orderId: string } }) => {
     const saleOrderNumber = params.row.orderId;
     const order = rawOrders.find(o => o.saleOrderNumber === saleOrderNumber);
     if (order) {
@@ -191,7 +221,7 @@ const CustomerOrderListPage = () => {
       minWidth: 100,
       align: 'center',
       headerAlign: 'center',
-      valueFormatter: (value: any) => {
+      valueFormatter: (value: unknown) => {
         if (!value) return '';
         const date = value.toDate ? value.toDate() : new Date(value);
         return date.toLocaleString('ko-KR', {
@@ -217,7 +247,7 @@ const CustomerOrderListPage = () => {
       align: 'center',
       headerAlign: 'center',
       type: 'number',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => value?.toLocaleString()
     },
     {
       field: 'totalAmount',
@@ -227,7 +257,7 @@ const CustomerOrderListPage = () => {
       type: 'number',
       align: 'right',
       headerAlign: 'right',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => value?.toLocaleString()
     },
     {
       field: 'status',

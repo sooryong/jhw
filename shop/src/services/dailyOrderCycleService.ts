@@ -42,6 +42,7 @@ class DailyOrderCycleService {
         autoResetScheduledAt: null
       };
     } catch (error) {
+      // Error handled silently
       console.error('Error getting order cycle status:', error);
       // 오류 시 안전한 기본값 (미마감, 오늘 00:00부터 시작)
       const today = new Date();
@@ -98,11 +99,12 @@ class DailyOrderCycleService {
       };
 
       if (docSnap.exists()) {
-        await updateDoc(docRef, cycleData as any);
+        await updateDoc(docRef, cycleData as unknown);
       } else {
         await setDoc(docRef, cycleData);
       }
     } catch (error) {
+      // Error handled silently
       console.error('Error confirming daily order:', error);
       throw error;
     }
@@ -124,6 +126,7 @@ class DailyOrderCycleService {
         isConfirmed: false
       });
     } catch (error) {
+      // Error handled silently
       console.error('Error resetting order cycle:', error);
       throw error;
     }

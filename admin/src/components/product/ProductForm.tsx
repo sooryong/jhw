@@ -42,7 +42,7 @@ import {
   Delete as DeleteIcon,
   CloudUpload as UploadIcon
 } from '@mui/icons-material';
-import { DataGrid, type GridColDef, type GridRowSelectionModel } from '@mui/x-data-grid';
+import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import type { SalePrices } from '../../types/product';
 import { priceUtils } from '../../types/product';
 import { settingsService } from '../../services/settingsService';
@@ -98,7 +98,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
   stockQuantity,
   minimumStock,
   supplierId = '',
-  image = '',
   images = [],
   primaryImageIndex = 0,
   description = '',
@@ -141,7 +140,8 @@ const ProductForm: React.FC<ProductFormProps> = ({
         const supplierList = await supplierService.getSuppliers({ isActive: true });
         setSuppliers(supplierList);
 
-      } catch {
+      } catch (error) {
+      // Error handled silently
         // 데이터 로드 실패 처리
       } finally {
         setLoading(false);
@@ -305,6 +305,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
         onChange('image', result.url);
       }
     } catch (error) {
+      // Error handled silently
       // 이미지 업로드 실패 처리
       setUploadError(error instanceof Error ? error.message : '이미지 업로드에 실패했습니다.');
     } finally {
@@ -347,7 +348,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
   };
 
   // 드래그 앤 드롭 핸들러 - 다중 이미지 지원
-  const handleDragOver = (e: React.DragEvent, imageIndex: number) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
@@ -796,7 +797,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 }}
                 onDragOver={(e) => {
                   if (readOnly || imageUploading) return;
-                  handleDragOver(e, index);
+                  handleDragOver(e);
                 }}
                 onDragLeave={(e) => {
                   if (readOnly || imageUploading) return;

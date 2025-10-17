@@ -16,30 +16,6 @@ import type {
   FormattedPhone
 } from './phoneNumber';
 
-// SMS 수신자 정보 (저장용)
-export interface SMSRecipient {
-  name: string;
-  mobile: NormalizedMobile; // 휴대폰번호 (정규화)
-}
-
-// SMS 수신자 정보 (표시용)
-export interface SMSRecipientDisplay {
-  name: string;
-  mobile: FormattedMobile; // 휴대폰번호 (포맷된)
-}
-
-// SMS 수신자 구조 (person1 필수, person2 선택) - 저장용
-export interface CustomerSMSRecipients {
-  person1: SMSRecipient;
-  person2?: SMSRecipient;
-}
-
-// SMS 수신자 구조 (표시용)
-export interface CustomerSMSRecipientsDisplay {
-  person1: SMSRecipientDisplay;
-  person2?: SMSRecipientDisplay;
-}
-
 // 특가 상품 정보
 export interface SpecialPrice {
   productId: string;             // 상품 ID
@@ -64,15 +40,18 @@ export interface FavoriteProduct {
   isActive: boolean;             // 활성화 여부
 }
 
-// 연락처 정보 (더 이상 사용하지 않음 - 개별 필드로 대체)
+// 담당자 정보 (고객사/공급사 공통)
 export interface ContactInfo {
-  mobile?: string;
-  phone?: string;
-  email?: string;
+  userId?: string;              // Optional: users 컬렉션 문서 ID (휴대폰번호)
+  name: string;                 // Required: 담당자 이름
+  mobile: NormalizedMobile;     // Required: 담당자 휴대폰 (정규화)
+  email?: string;               // Optional: 이메일 (향후 확장)
+  position?: string;            // Optional: 직책 (향후 확장)
+  department?: string;          // Optional: 부서 (향후 확장)
 }
 
-// 기본 회사 정보 (공통 필드) - 사업자등록번호를 문서 ID로 사용 (저장용)
-export interface BaseCompany {
+// 기본 회사 정보 (최소 공통 필드) - 사업자등록번호를 문서 ID로 사용 (저장용)
+export interface BaseCompanyCore {
   // 사업자등록번호가 문서 ID가 되므로 별도 id 필드 불필요
   businessNumber: NormalizedBusinessNumber; // 사업자등록번호 (정규화)
   businessName: string; // 상호명
@@ -86,8 +65,9 @@ export interface BaseCompany {
   businessPhone?: NormalizedPhone;  // 회사 전화번호
   businessEmail?: string;  // 회사 이메일
 
-  // SMS 수신자 (person1 필수, person2 선택)
-  smsRecipient: CustomerSMSRecipients;
+  // 주문 담당자 (고객사/공급사 공통) - 통합 Contact 구조
+  primaryContact: ContactInfo;      // 주 담당자 (필수)
+  secondaryContact?: ContactInfo;   // 부 담당자 (선택)
 
   // 상태
   isActive: boolean;
@@ -97,8 +77,8 @@ export interface BaseCompany {
   updatedAt: Timestamp;
 }
 
-// 기본 회사 정보 (표시용)
-export interface BaseCompanyDisplay {
+// 기본 회사 정보 (최소 공통 필드 - 표시용)
+export interface BaseCompanyCoreDisplay {
   businessNumber: FormattedBusinessNumber; // 사업자등록번호 (포맷된)
   businessName: string; // 상호명
   president: string; // 대표자명
@@ -111,8 +91,9 @@ export interface BaseCompanyDisplay {
   businessPhone?: FormattedPhone;  // 회사 전화번호
   businessEmail?: string;  // 회사 이메일
 
-  // SMS 수신자 (포맷된)
-  smsRecipient: CustomerSMSRecipientsDisplay;
+  // 주문 담당자 (통합 Contact 구조)
+  primaryContact: ContactInfo;      // 주 담당자 (필수)
+  secondaryContact?: ContactInfo;   // 부 담당자 (선택)
 
   // 상태
   isActive: boolean;
@@ -123,7 +104,7 @@ export interface BaseCompanyDisplay {
 }
 
 // 고객사 정보 (customers 컬렉션) - 저장용
-export interface Customer extends BaseCompany {
+export interface Customer extends BaseCompanyCore {
   customerType: string; // Settings에서 로드되는 고객사 유형
   discountRate: number; // 기본 할인율 (%)
   currentBalance: number; // 현재 미수금 (필드명 변경)
@@ -134,7 +115,7 @@ export interface Customer extends BaseCompany {
 }
 
 // 고객사 정보 (표시용)
-export interface CustomerDisplay extends BaseCompanyDisplay {
+export interface CustomerDisplay extends BaseCompanyCoreDisplay {
   customerType: string;
   discountRate: number;
   currentBalance: number;
@@ -143,14 +124,13 @@ export interface CustomerDisplay extends BaseCompanyDisplay {
 }
 
 // 공급사 정보 (suppliers 컬렉션) - 저장용
-export interface Supplier extends BaseCompany {
-  // 공급사는 기본 회사 정보와 SMS 수신자만 있으면 됨
-  // paymentTerms, deliveryTerms, outstandingPayment, supplierCategory 제거
+export interface Supplier extends BaseCompanyCore {
+  // 공급사는 기본 회사 정보만 있으면 됨
   supplierType?: string;
 }
 
 // 공급사 정보 (표시용)
-export interface SupplierDisplay extends BaseCompanyDisplay {
+export interface SupplierDisplay extends BaseCompanyCoreDisplay {
   supplierType?: string;
 }
 
@@ -178,16 +158,18 @@ export interface CustomerFormData {
   businessPhone?: string;
   businessEmail?: string;
 
-  // SMS 수신자 (입력용 - 문자열 허용)
-  smsRecipient: {
-    person1: {
-      name: string;
-      mobile: string; // 입력 시에는 문자열로 받아서 정규화
-    };
-    person2?: {
-      name: string;
-      mobile: string; // 입력 시에는 문자열로 받아서 정규화
-    };
+  // 주문 담당자 (통합 Contact 구조 - 입력용)
+  primaryContact: {
+    userId?: string;    // Optional: users 컬렉션 문서 ID
+    name: string;
+    mobile: string;     // 입력 시에는 문자열로 받아서 정규화
+    email?: string;
+  };
+  secondaryContact?: {
+    userId?: string;    // Optional: users 컬렉션 문서 ID
+    name: string;
+    mobile: string;     // 입력 시에는 문자열로 받아서 정규화
+    email?: string;
   };
 
   // 상태
@@ -218,16 +200,18 @@ export interface SupplierFormData {
   businessPhone?: string;
   businessEmail?: string;
 
-  // SMS 수신자 (입력용 - 문자열 허용)
-  smsRecipient: {
-    person1: {
-      name: string;
-      mobile: string; // 입력 시에는 문자열로 받아서 정규화
-    };
-    person2?: {
-      name: string;
-      mobile: string; // 입력 시에는 문자열로 받아서 정규화
-    };
+  // 주문 담당자 (통합 Contact 구조 - 입력용)
+  primaryContact: {
+    userId?: string;    // Optional: users 컬렉션 문서 ID
+    name: string;
+    mobile: string;     // 입력 시에는 문자열로 받아서 정규화
+    email?: string;
+  };
+  secondaryContact?: {
+    userId?: string;    // Optional: users 컬렉션 문서 ID
+    name: string;
+    mobile: string;     // 입력 시에는 문자열로 받아서 정규화
+    email?: string;
   };
 
   // 상태

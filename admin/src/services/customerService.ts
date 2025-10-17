@@ -25,8 +25,7 @@ import type {
   Customer,
   CustomerDisplay,
   CustomerFormData,
-  CustomerFilter,
-  CustomerSMSRecipients
+  CustomerFilter
 } from '../types/company';
 import {
   CompanyServiceError
@@ -49,7 +48,8 @@ import type {
   FormattedBusinessNumber,
   FormattedPhone
 } from '../types/phoneNumber';
-import { findUserByMobile, addCustomerToUser, createCustomerUser } from './userService';
+// import { removeCustomerFromUser } from './userService';
+import { linkContactToCustomer, unlinkContactFromCustomer } from './contactService';
 
 export class CustomerService {
   private collectionName = 'customers';
@@ -57,37 +57,22 @@ export class CustomerService {
   /**
    * CustomerFormData를 Customer 저장용 타입으로 변환
    * @param formData 폼 데이터
+   * @param primaryContact 주 담당자 ContactInfo
+   * @param secondaryContact 부 담당자 ContactInfo (선택)
    * @returns 정규화된 Customer 객체
    */
-  private convertFormDataToCustomer(formData: CustomerFormData): Omit<Customer, 'createdAt' | 'updatedAt'> {
+  private convertFormDataToCustomer(
+    formData: CustomerFormData,
+    primaryContact: ContactInfo,
+    secondaryContact?: ContactInfo
+  ): Omit<Customer, 'createdAt' | 'updatedAt'> {
     // 사업자등록번호 정규화 및 검증 (하이픈 포함 형식)
     const normalizedBusinessNumber = normalizeBusinessNumber(formData.businessNumber) as NormalizedBusinessNumber;
     if (!isValidBusinessNumber(normalizedBusinessNumber)) {
       throw new CompanyServiceError('유효하지 않은 사업자등록번호입니다.', 'INVALID_BUSINESS_NUMBER');
     }
 
-    // 휴대폰번호들 정규화 및 검증
-    const normalizedSmsRecipient: CustomerSMSRecipients = {
-      person1: {
-        name: formData.smsRecipient.person1.name,
-        mobile: normalizeNumber(formData.smsRecipient.person1.mobile) as NormalizedMobile
-      }
-    };
-
-    if (!isValidMobile(normalizedSmsRecipient.person1.mobile)) {
-      throw new CompanyServiceError('SMS 수신자1 휴대폰번호가 올바르지 않습니다.', 'INVALID_MOBILE');
-    }
-
-    if (formData.smsRecipient.person2) {
-      const normalizedPerson2Mobile = normalizeNumber(formData.smsRecipient.person2.mobile) as NormalizedMobile;
-      if (!isValidMobile(normalizedPerson2Mobile)) {
-        throw new CompanyServiceError('SMS 수신자2 휴대폰번호가 올바르지 않습니다.', 'INVALID_MOBILE');
-      }
-      normalizedSmsRecipient.person2 = {
-        name: formData.smsRecipient.person2.name,
-        mobile: normalizedPerson2Mobile
-      };
-    }
+    // 주문 담당자 검증은 processContact에서 수행됨
 
     // 회사 연락처 정규화 (선택 필드)
     let presidentMobile: NormalizedMobile | undefined;
@@ -107,7 +92,7 @@ export class CustomerService {
       }
     }
 
-    const result: any = {
+    const result: Record<string, unknown> = {
       businessNumber: normalizedBusinessNumber,
       businessName: formData.businessName,
       president: formData.president,
@@ -115,7 +100,7 @@ export class CustomerService {
       businessType: formData.businessType,
       businessItem: formData.businessItem,
       businessEmail: formData.businessEmail || '',
-      smsRecipient: normalizedSmsRecipient,
+      primaryContact,      // ContactInfo 객체
       isActive: formData.isActive,
       customerType: formData.customerType,
       discountRate: formData.discountRate,
@@ -125,6 +110,9 @@ export class CustomerService {
     };
 
     // 선택 필드는 값이 있을 때만 추가
+    if (secondaryContact) {
+      result.secondaryContact = secondaryContact;
+    }
     if (presidentMobile) {
       result.presidentMobile = presidentMobile;
     }
@@ -149,29 +137,44 @@ export class CustomerService {
         : undefined,
       businessPhone: customer.businessPhone
         ? formatPhone(customer.businessPhone) as FormattedPhone
-        : undefined,
-      smsRecipient: {
-        person1: {
-          name: customer.smsRecipient.person1.name,
-          mobile: formatMobile(customer.smsRecipient.person1.mobile) as FormattedMobile
-        },
-        person2: customer.smsRecipient.person2 ? {
-          name: customer.smsRecipient.person2.name,
-          mobile: formatMobile(customer.smsRecipient.person2.mobile) as FormattedMobile
-        } : undefined
-      }
+        : undefined
     };
   }
+
+  // processOrderContacts 메서드 제거 → contactService.processContact 사용
 
   // 고객사 생성
   async createCustomer(formData: CustomerFormData): Promise<string> {
     try {
-      // 폼 데이터를 정규화된 Customer 객체로 변환
-      const normalizedCustomer = this.convertFormDataToCustomer(formData);
-      const businessNumberId = normalizedCustomer.businessNumber;
+      // 사업자등록번호 정규화
+      const businessNumberId = normalizeBusinessNumber(formData.businessNumber) as NormalizedBusinessNumber;
 
       // 중복 검사
       await this.checkDuplicateBusinessNumber(businessNumberId);
+
+      // userId 필수 검증
+      if (!formData.primaryContact.userId) {
+        throw new CompanyServiceError(
+          '담당자1을 선택해주세요. 시스템 설정 > 사용자 관리에서 먼저 사용자를 추가해주세요.',
+          'MISSING_USER_ID'
+        );
+      }
+
+      // 주문 담당자 처리 (기존 사용자만 연결) - contactService 사용
+      const primaryContact = await linkContactToCustomer(
+        formData.primaryContact.userId,
+        businessNumberId
+      );
+
+      const secondaryContact = formData.secondaryContact?.userId
+        ? await linkContactToCustomer(
+            formData.secondaryContact.userId,
+            businessNumberId
+          )
+        : undefined;
+
+      // 폼 데이터를 정규화된 Customer 객체로 변환
+      const normalizedCustomer = this.convertFormDataToCustomer(formData, primaryContact, secondaryContact);
 
       const now = Timestamp.now();
       const customerData: Customer = {
@@ -184,22 +187,10 @@ export class CustomerService {
       const customerRef = doc(db, this.collectionName, businessNumberId);
       await setDoc(customerRef, customerData);
 
-      // SMS 수신자 자동 사용자 처리
-      try {
-        await this.processSMSRecipients(businessNumberId, normalizedCustomer.smsRecipient);
-        console.log(`고객사 ${formData.businessName} (${businessNumberId}) 생성 및 SMS 수신자 처리 완료`);
-      } catch (error) {
-        console.error(`고객사 ${formData.businessName} SMS 수신자 자동 처리 실패:`, {
-          businessNumber: businessNumberId,
-          businessName: formData.businessName,
-          smsRecipient: normalizedCustomer.smsRecipient,
-          error: error instanceof Error ? error.message : error
-        });
-        // 고객사 등록은 성공으로 처리하고, SMS 수신자 처리 실패는 로그만 남김
-      }
 
       return businessNumberId;
     } catch (error) {
+      // Error handled silently
       console.error('고객사 생성 오류 상세:', error);
       if (error instanceof CompanyServiceError) {
         throw error;
@@ -241,16 +232,12 @@ export class CustomerService {
           const formattedBusinessNumber = formatBusinessNumber(customer.businessNumber);
           const formattedBusinessMobile = customer.presidentMobile ? formatMobile(customer.presidentMobile) : '';
           const formattedBusinessPhone = customer.businessPhone ? formatPhone(customer.businessPhone) : '';
-          const formattedSmsRecipient1 = formatMobile(customer.smsRecipient.person1.mobile);
-          const formattedSmsRecipient2 = customer.smsRecipient.person2 ? formatMobile(customer.smsRecipient.person2.mobile) : '';
 
           return customer.businessName.toLowerCase().includes(searchText) ||
                  customer.president.toLowerCase().includes(searchText) ||
                  formattedBusinessNumber.includes(searchText) ||
                  formattedBusinessMobile.includes(searchText) ||
-                 formattedBusinessPhone.includes(searchText) ||
-                 formattedSmsRecipient1.includes(searchText) ||
-                 formattedSmsRecipient2.includes(searchText);
+                 formattedBusinessPhone.includes(searchText);
         });
       }
 
@@ -265,7 +252,7 @@ export class CustomerService {
       });
 
       return customers;
-    } catch {
+    } catch (error) {
       // 오류 처리: 고객사 목록 조회 실패
       throw new CompanyServiceError('고객사 목록을 불러올 수 없습니다.', 'FETCH_FAILED');
     }
@@ -303,7 +290,7 @@ export class CustomerService {
 
       const querySnapshot = await getDocs(q);
       return querySnapshot.size;
-    } catch {
+    } catch (error) {
       // 오류 처리: 고객사 개수 조회 실패
       throw new CompanyServiceError('고객사 개수를 불러올 수 없습니다.', 'FETCH_FAILED');
     }
@@ -325,7 +312,7 @@ export class CustomerService {
       }
 
       return null;
-    } catch {
+    } catch (error) {
       throw new CompanyServiceError('고객사 정보를 불러올 수 없습니다.', 'FETCH_FAILED');
     }
   }
@@ -358,35 +345,63 @@ export class CustomerService {
         if (formData.presidentMobile) {
           updateData.presidentMobile = normalizeNumber(formData.presidentMobile) as NormalizedMobile;
         } else {
-          updateData.presidentMobile = deleteField() as any; // Firestore에서 필드 삭제
+          updateData.presidentMobile = deleteField() as unknown; // Firestore에서 필드 삭제
         }
       }
       if (formData.businessPhone !== undefined) {
         if (formData.businessPhone) {
           updateData.businessPhone = normalizeNumber(formData.businessPhone) as NormalizedPhone;
         } else {
-          updateData.businessPhone = deleteField() as any; // Firestore에서 필드 삭제
+          updateData.businessPhone = deleteField() as unknown; // Firestore에서 필드 삭제
         }
       }
       if (formData.businessEmail !== undefined) {
         updateData.businessEmail = formData.businessEmail || ''; // 빈 문자열 저장 (이메일은 필드 유지)
       }
 
-      // SMS 수신자 업데이트 (정규화 적용)
-      if (formData.smsRecipient) {
-        const normalizedSmsRecipient: CustomerSMSRecipients = {
-          person1: {
-            name: formData.smsRecipient.person1.name,
-            mobile: normalizeNumber(formData.smsRecipient.person1.mobile) as NormalizedMobile
-          }
-        };
-        if (formData.smsRecipient.person2) {
-          normalizedSmsRecipient.person2 = {
-            name: formData.smsRecipient.person2.name,
-            mobile: normalizeNumber(formData.smsRecipient.person2.mobile) as NormalizedMobile
-          };
+      // 주문 담당자 업데이트
+      if (formData.primaryContact) {
+        // userId 필수 검증
+        if (!formData.primaryContact.userId) {
+          throw new CompanyServiceError(
+            '담당자1을 선택해주세요. 시스템 설정 > 사용자 관리에서 먼저 사용자를 추가해주세요.',
+            'MISSING_USER_ID'
+          );
         }
-        updateData.smsRecipient = normalizedSmsRecipient;
+
+        // 1. 기존 담당자 정보 조회
+        const oldCustomerData = docSnap.data() as Customer;
+        const oldPrimaryUserId = oldCustomerData.primaryContact?.userId;
+        const oldSecondaryUserId = oldCustomerData.secondaryContact?.userId;
+
+        // 2. 기존 담당자와 다르면 이전 담당자에서 고객사 연결 해제
+        if (oldPrimaryUserId && oldPrimaryUserId !== formData.primaryContact.userId) {
+          await unlinkContactFromCustomer(oldPrimaryUserId, businessNumberId);
+        }
+        if (oldSecondaryUserId && oldSecondaryUserId !== formData.secondaryContact?.userId) {
+          await unlinkContactFromCustomer(oldSecondaryUserId, businessNumberId);
+        }
+
+        // 3. 새 담당자 연결 (기존 사용자만)
+        const primaryContact = await linkContactToCustomer(
+          formData.primaryContact.userId,
+          businessNumberId
+        );
+
+        const secondaryContact = formData.secondaryContact?.userId
+          ? await linkContactToCustomer(
+              formData.secondaryContact.userId,
+              businessNumberId
+            )
+          : undefined;
+
+        // 4. 담당자 정보 업데이트
+        updateData.primaryContact = primaryContact;
+        if (secondaryContact) {
+          updateData.secondaryContact = secondaryContact;
+        } else {
+          updateData.secondaryContact = deleteField() as unknown; // 부 담당자 제거
+        }
       }
 
       // 상태 업데이트
@@ -402,6 +417,7 @@ export class CustomerService {
       if (formData.favoriteProducts) updateData.favoriteProducts = formData.favoriteProducts;
 
       await updateDoc(docRef, updateData);
+
     } catch (error) {
       if (error instanceof CompanyServiceError) {
         throw error;
@@ -432,22 +448,39 @@ export class CustomerService {
     }
   }
 
-  // 사업자등록번호 중복 검사
+  // 사업자등록번호 중복 검사 (고객사 컬렉션 내에서만)
   private async checkDuplicateBusinessNumber(businessNumberId: NormalizedBusinessNumber): Promise<void> {
-    // customers 컬렉션에서 확인
+    // customers 컬렉션에서만 확인
     const customerDocRef = doc(db, 'customers', businessNumberId);
     const customerDoc = await getDoc(customerDocRef);
 
     if (customerDoc.exists()) {
       throw new CompanyServiceError('이미 고객사로 등록된 사업자등록번호입니다.', 'DUPLICATE_BUSINESS_NUMBER');
     }
+  }
 
-    // suppliers 컬렉션에서도 확인
-    const supplierDocRef = doc(db, 'suppliers', businessNumberId);
-    const supplierDoc = await getDoc(supplierDocRef);
+  /**
+   * 사업자등록번호 유효성 및 중복 검사 (UI에서 실시간 검증용)
+   * @param businessNumber 사업자등록번호
+   * @returns { valid: boolean, message?: string }
+   */
+  async validateBusinessNumber(businessNumber: string): Promise<{ valid: boolean; message?: string }> {
+    try {
+      // 1. 형식 유효성 검사
+      const normalized = normalizeBusinessNumber(businessNumber) as NormalizedBusinessNumber;
+      if (!isValidBusinessNumber(normalized)) {
+        return { valid: false, message: '유효하지 않은 사업자등록번호 형식입니다.' };
+      }
 
-    if (supplierDoc.exists()) {
-      throw new CompanyServiceError('이미 공급사로 등록된 사업자등록번호입니다.', 'DUPLICATE_BUSINESS_NUMBER');
+      // 2. 중복 검사
+      await this.checkDuplicateBusinessNumber(normalized);
+
+      return { valid: true };
+    } catch (error) {
+      if (error instanceof CompanyServiceError) {
+        return { valid: false, message: error.message };
+      }
+      return { valid: false, message: '사업자등록번호 검증 중 오류가 발생했습니다.' };
     }
   }
 
@@ -474,94 +507,11 @@ export class CustomerService {
       });
 
       return stats;
-    } catch {
+    } catch (error) {
       throw new CompanyServiceError('고객사 통계를 불러올 수 없습니다.', 'STATS_FAILED');
     }
   }
 
-  /**
-   * SMS 수신자 자동 사용자 처리
-   * @param businessNumber 고객사 사업자등록번호 (하이픈 제거된 형태)
-   * @param smsRecipient SMS 수신자 정보
-   */
-  private async processSMSRecipients(businessNumber: string, smsRecipient: CustomerSMSRecipients): Promise<void> {
-    console.log(`고객사 ${businessNumber} SMS 수신자 자동 처리 시작`);
-
-    if (!smsRecipient) {
-      console.warn(`고객사 ${businessNumber}: SMS 수신자 정보가 없습니다.`);
-      return;
-    }
-
-    // person1 (필수) 처리
-    if (smsRecipient.person1?.mobile && smsRecipient.person1?.name) {
-      if (this.isValidMobile(smsRecipient.person1.mobile)) {
-        await this.processRecipient(businessNumber, smsRecipient.person1, 'person1');
-      } else {
-        console.warn(`고객사 ${businessNumber}: person1 휴대폰번호 형식이 올바르지 않습니다: ${smsRecipient.person1.mobile}`);
-      }
-    } else {
-      console.warn(`고객사 ${businessNumber}: person1 정보가 불완전합니다.`, smsRecipient.person1);
-    }
-
-    // person2 (선택) 처리
-    if (smsRecipient.person2?.mobile && smsRecipient.person2?.name) {
-      if (this.isValidMobile(smsRecipient.person2.mobile)) {
-        await this.processRecipient(businessNumber, smsRecipient.person2, 'person2');
-      } else {
-        console.warn(`고객사 ${businessNumber}: person2 휴대폰번호 형식이 올바르지 않습니다: ${smsRecipient.person2.mobile}`);
-      }
-    }
-
-    console.log(`고객사 ${businessNumber} SMS 수신자 자동 처리 완료`);
-  }
-
-  /**
-   * 휴대폰번호 유효성 검사 (numberUtils 사용)
-   * @param mobile 휴대폰번호
-   * @returns 유효 여부
-   */
-  private isValidMobile(mobile: string): boolean {
-    if (!mobile) return false;
-    const normalized = normalizeNumber(mobile) as NormalizedMobile;
-    return isValidMobile(normalized);
-  }
-
-  /**
-   * 개별 SMS 수신자 처리
-   * @param businessNumber 고객사 사업자등록번호 (정규화된)
-   * @param recipient SMS 수신자 정보
-   * @param role 수신자 역할 (person1/person2)
-   */
-  private async processRecipient(
-    businessNumber: string,
-    recipient: { name: string; mobile: NormalizedMobile },
-    role: 'person1' | 'person2'
-  ): Promise<void> {
-    try {
-      console.log(`SMS 수신자 처리: ${recipient.name}(${recipient.mobile}) - ${role}`);
-
-      // 기존 사용자 확인 (정규화된 번호로 검색)
-      const existingUser = await findUserByMobile(recipient.mobile);
-
-      if (existingUser) {
-        // 기존 사용자: 고객사 색인에 추가
-        console.log(`기존 사용자 발견: ${existingUser.name}(${existingUser.uid})`);
-        await addCustomerToUser(existingUser.uid, businessNumber);
-        console.log(`사용자 ${existingUser.uid}에 고객사 ${businessNumber} 추가 완료`);
-      } else {
-        // 신규 사용자: customer 역할로 생성
-        console.log(`신규 사용자 생성: ${recipient.name}(${recipient.mobile})`);
-        const newUser = await createCustomerUser(recipient, [businessNumber]);
-        console.log(`신규 사용자 생성 완료: ${newUser.uid}, 기본 비밀번호: ${newUser.defaultPassword}`);
-
-        // TODO: SMS 발송 기능 추가 시 여기서 계정 정보 발송
-        // await sendAccountCreationSMS(recipient.mobile, newUser.defaultPassword);
-      }
-    } catch (error) {
-      console.error(`SMS 수신자 ${recipient.name}(${recipient.mobile}) 처리 실패:`, error);
-      // 개별 수신자 처리 실패는 전체 프로세스를 중단하지 않음
-    }
-  }
 }
 
 // 싱글톤 인스턴스
@@ -588,7 +538,10 @@ export const getCustomerForDisplay = async (businessNumber: string): Promise<Cus
 };
 
 // 편의 함수 export (기존 코드 호환성)
+export const getCustomers = customerService.getCustomers.bind(customerService);
 export const getCustomer = customerService.getCustomer.bind(customerService);
 export const updateCustomer = customerService.updateCustomer.bind(customerService);
+export const createCustomer = customerService.createCustomer.bind(customerService);
+export const deleteCustomer = customerService.deleteCustomer.bind(customerService);
 
 export default customerService;

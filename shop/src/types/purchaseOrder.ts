@@ -36,9 +36,6 @@ export interface PurchaseOrder {
   // 카테고리
   category: string;            // "일일식품", "냉동식품", "공산품"
 
-  // 시간 기반 분류 (v1.1)
-  confirmationStatus: 'regular' | 'additional';  // regular: 일일확정 전, additional: 일일확정 후
-
   // 상태 관리 (생명주기)
   status: 'placed' | 'confirmed' | 'pended' | 'cancelled' | 'completed';
   placedAt: Timestamp;         // 발주일시

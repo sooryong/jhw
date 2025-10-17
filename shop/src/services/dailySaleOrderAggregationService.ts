@@ -99,9 +99,10 @@ class OrderAggregationService {
             ...docSnap.data()
           } as Product);
         } else {
-          console.warn(`Product not found: ${productId}`);
+          // Error handled silently
         }
       } catch (error) {
+      // Error handled silently
         console.error(`Error fetching product ${productId}:`, error);
       }
     }
@@ -129,9 +130,10 @@ class OrderAggregationService {
           const supplier = snapshot.docs[0].data() as Company;
           suppliers.push(supplier);
         } else {
-          console.warn(`Supplier not found: ${supplierId}`);
+          // Error handled silently
         }
       } catch (error) {
+      // Error handled silently
         console.error(`Error fetching supplier ${supplierId}:`, error);
       }
     }

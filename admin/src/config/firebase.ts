@@ -7,7 +7,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
+import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
 import { getStorage } from 'firebase/storage';
 
 // Firebase 설정
@@ -36,9 +36,15 @@ if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true'
   try {
     connectFunctionsEmulator(functions, 'localhost', 5001);
     // Firebase Functions 에뮬레이터 연결 완료
-  } catch {
+  } catch (error) {
+      // Error handled silently
     // 경고: Firebase Functions 에뮬레이터 연결 실패
   }
 }
+
+// Cloud Functions 호출 헬퍼
+export const createUserAccountFunction = httpsCallable(functions, 'createUserAccount');
+export const resetUserPasswordFunction = httpsCallable(functions, 'resetUserPassword');
+export const deleteUserAccountFunction = httpsCallable(functions, 'deleteUserAccount');
 
 export default app;

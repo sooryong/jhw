@@ -35,12 +35,13 @@ const RoleBasedRedirect: React.FC = () => {
 
   // 역할별 리다이렉트
   switch (user.role) {
-    case 'customer':
-      return <Navigate to="/shop" replace />;
     case 'admin':
     case 'staff':
-    default:
       return <Navigate to="/dashboard" replace />;
+    case 'customer':
+    default:
+      // customer는 플랫폼 접근 불가 - 로그인 페이지로
+      return <Navigate to="/login" replace />;
   }
 };
 

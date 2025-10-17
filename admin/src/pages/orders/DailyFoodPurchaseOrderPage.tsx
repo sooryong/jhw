@@ -18,8 +18,6 @@ import {
   CardContent,
   Alert,
   Snackbar,
-  Menu,
-  MenuItem,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -29,14 +27,19 @@ import {
   ArrowBack as ArrowBackIcon,
   LocalShipping as LocalShippingIcon,
   Send as SendIcon,
-  MoreVert as MoreVertIcon
+  Edit as EditIcon
 } from '@mui/icons-material';
 import { DataGrid, type GridColDef, type GridRowsProp } from '@mui/x-data-grid';
+import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import purchaseOrderService from '../../services/purchaseOrderService';
+import dailyFoodPurchaseOrderService from '../../services/dailyFoodPurchaseOrderService';
 import dailyOrderCycleService from '../../services/dailyOrderCycleService';
 import productService from '../../services/productService';
+import { supplierService } from '../../services/supplierService';
 import PurchaseOrderDetailDialog from '../../components/orders/PurchaseOrderDetailDialog';
 import type { PurchaseOrder } from '../../types/purchaseOrder';
+import { formatMobile } from '../../utils/numberUtils';
 
 const DailyFoodPurchaseOrderPage = () => {
   const navigate = useNavigate();
@@ -68,12 +71,37 @@ const DailyFoodPurchaseOrderPage = () => {
     total: 0
   });
 
-  // 케밥메뉴 상태
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedPurchaseOrderNumber, setSelectedPurchaseOrderNumber] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
+
+    // Firestore 실시간 리스너 설정
+    let unsubscribe: (() => void) | null = null;
+
+    const setupListener = async () => {
+      const status = await dailyOrderCycleService.getStatus();
+      const resetAt = status.resetAt || new Date(new Date().setHours(0, 0, 0, 0));
+
+      const purchaseOrdersQuery = query(
+        collection(db, 'purchaseOrders'),
+        where('placedAt', '>=', Timestamp.fromDate(resetAt)),
+        where('category', '==', '일일식품')
+      );
+
+      unsubscribe = onSnapshot(purchaseOrdersQuery, (snapshot) => {
+        if (snapshot.docChanges().length > 0) {
+          loadData();
+        }
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const loadData = async () => {
@@ -84,20 +112,19 @@ const DailyFoodPurchaseOrderPage = () => {
       const resetAt = cycleStatus.resetAt;
 
       if (!resetAt) {
-        console.warn('resetAt이 없습니다. 오늘 00:00 기준으로 조회합니다.');
+        // resetAt이 없습니다. 오늘 00:00 기준으로 조회합니다.
       }
 
       // 일일식품 매입주문 조회
-      const orders = await purchaseOrderService.getPurchaseOrders({
-        category: '일일식품',
-        startDate: resetAt || new Date(new Date().setHours(0, 0, 0, 0))
-      });
+      const orders = await dailyFoodPurchaseOrderService.getOrdersSinceReset(
+        resetAt || new Date(new Date().setHours(0, 0, 0, 0))
+      );
 
       // 원본 주문 데이터 저장
       setRawOrders(orders);
 
       // 주문별 집계 맵 생성
-      const orderMap = new Map<string, any>();
+      const orderMap = new Map<string, unknown>();
 
       for (const order of orders) {
         if (!orderMap.has(order.purchaseOrderNumber)) {
@@ -118,9 +145,26 @@ const DailyFoodPurchaseOrderPage = () => {
             }
           }
 
+          // 공급사 정보 조회 (primaryContact, secondaryContact 가져오기)
+          let primaryContactMobile = '';
+          let secondaryContactMobile = '';
+          try {
+            const supplier = await supplierService.getSupplierById(order.supplierId);
+            if (supplier?.primaryContact?.mobile) {
+              primaryContactMobile = supplier.primaryContact.mobile;
+            }
+            if (supplier?.secondaryContact?.mobile) {
+              secondaryContactMobile = supplier.secondaryContact.mobile;
+            }
+          } catch (error) {
+            console.error(`공급사 ${order.supplierId} 정보 조회 실패:`, error);
+          }
+
           orderMap.set(order.purchaseOrderNumber, {
             orderId: order.purchaseOrderNumber,
             supplierName: order.supplierInfo?.businessName || '알 수 없음',
+            primaryContactMobile,
+            secondaryContactMobile,
             createdAt: order.placedAt,
             totalQuantity,
             purchaseAmount,
@@ -156,7 +200,7 @@ const DailyFoodPurchaseOrderPage = () => {
   };
 
   // 행 클릭 핸들러
-  const handleRowClick = (params: any) => {
+  const handleRowClick = (params: { row: { orderId: string } }) => {
     const purchaseOrderNumber = params.row.orderId;
     const order = rawOrders.find(o => o.purchaseOrderNumber === purchaseOrderNumber);
     if (order) {
@@ -255,6 +299,7 @@ const DailyFoodPurchaseOrderPage = () => {
   };
 
   // 실패 주문 재발송
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleResendFailedSms = async () => {
     // placed 상태이면서 SMS 실패한 주문만 필터링
     const failedOrders = rawOrders.filter(
@@ -310,62 +355,6 @@ const DailyFoodPurchaseOrderPage = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
-  // 케밥메뉴 열기
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, purchaseOrderNumber: string) => {
-    event.stopPropagation();
-    setAnchorEl(event.currentTarget);
-    setSelectedPurchaseOrderNumber(purchaseOrderNumber);
-  };
-
-  // 케밥메뉴 닫기
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-    setSelectedPurchaseOrderNumber(null);
-  };
-
-  // SMS 발송 (케밥메뉴)
-  const handleSendSmsFromMenu = async () => {
-    handleMenuClose();
-
-    if (!selectedPurchaseOrderNumber) return;
-
-    setSendingSms(true);
-    try {
-      const result = await purchaseOrderService.sendBatchSms([selectedPurchaseOrderNumber]);
-
-      if (result.results[0]?.success) {
-        // SMS 성공 시 자동 confirmed 처리
-        await purchaseOrderService.updatePurchaseOrderStatus(
-          selectedPurchaseOrderNumber,
-          'confirmed'
-        );
-
-        setSnackbar({
-          open: true,
-          message: 'SMS 발송 및 주문 확정이 완료되었습니다.',
-          severity: 'success'
-        });
-
-        await loadData();
-      } else {
-        setSnackbar({
-          open: true,
-          message: `SMS 발송 실패: ${result.results[0]?.error || '알 수 없는 오류'}`,
-          severity: 'error'
-        });
-      }
-    } catch (error) {
-      console.error('SMS 발송 중 오류:', error);
-      setSnackbar({
-        open: true,
-        message: 'SMS 발송 중 오류가 발생했습니다.',
-        severity: 'error'
-      });
-    } finally {
-      setSendingSms(false);
-    }
-  };
-
   // 매입주문 컬럼 정의
   const purchaseOrderColumns: GridColDef[] = [
     {
@@ -377,28 +366,9 @@ const DailyFoodPurchaseOrderPage = () => {
       headerAlign: 'left'
     },
     {
-      field: 'createdAt',
-      headerName: '주문일시',
-      flex: 0.12,
-      minWidth: 100,
-      align: 'center',
-      headerAlign: 'center',
-      valueFormatter: (value: any) => {
-        if (!value) return '';
-        const date = value.toDate ? value.toDate() : new Date(value);
-        return date.toLocaleString('ko-KR', {
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        });
-      }
-    },
-    {
       field: 'supplierName',
       headerName: '공급사',
-      flex: 0.18,
+      flex: 0.20,
       minWidth: 120
     },
     {
@@ -409,49 +379,62 @@ const DailyFoodPurchaseOrderPage = () => {
       align: 'center',
       headerAlign: 'center',
       type: 'number',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => value?.toLocaleString()
     },
     {
       field: 'purchaseAmount',
       headerName: '금액',
-      flex: 0.12,
+      flex: 0.13,
       minWidth: 90,
       type: 'number',
       align: 'right',
       headerAlign: 'right',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => value?.toLocaleString()
+    },
+    {
+      field: 'primaryContactMobile',
+      headerName: '담당자',
+      flex: 0.14,
+      minWidth: 90,
+      align: 'center',
+      headerAlign: 'center',
+      renderCell: (params) => {
+        const primary = params.value;
+        const secondary = params.row.secondaryContactMobile;
+
+        if (!primary && !secondary) return '-';
+        if (!primary) return formatMobile(secondary);
+
+        const displayText = secondary
+          ? `${formatMobile(primary)} (+1)`
+          : formatMobile(primary);
+
+        return displayText;
+      }
     },
     {
       field: 'smsSuccess',
       headerName: 'SMS',
-      flex: 0.12,
+      flex: 0.10,
       minWidth: 100,
       align: 'center',
       headerAlign: 'center',
       renderCell: (params) => {
         const smsStatus = params.value === undefined || params.value === null ? 'unsent' : (params.value ? 'success' : 'failed');
         const statusMap = {
-          unsent: { label: '미발송', color: 'default' as const },
+          unsent: { label: '대기', color: 'default' as const },
           success: { label: '성공', color: 'info' as const },
           failed: { label: '실패', color: 'warning' as const }
         };
         const status = statusMap[smsStatus];
 
         return (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, width: '100%', height: '100%' }}>
-            <Chip
-              label={status.label}
-              color={status.color}
-              size="small"
-              variant="outlined"
-            />
-            <IconButton
-              size="small"
-              onClick={(e) => handleMenuOpen(e, params.row.orderId)}
-            >
-              <MoreVertIcon fontSize="small" />
-            </IconButton>
-          </Box>
+          <Chip
+            label={status.label}
+            color={status.color}
+            size="small"
+            variant="outlined"
+          />
         );
       }
     },
@@ -464,7 +447,7 @@ const DailyFoodPurchaseOrderPage = () => {
       headerAlign: 'center',
       renderCell: (params) => {
         const statusMap: Record<string, { label: string; color: 'default' | 'warning' | 'info' | 'success' }> = {
-          placed: { label: '발주', color: 'warning' },
+          placed: { label: '생성', color: 'warning' },
           pended: { label: '보류', color: 'warning' },
           rejected: { label: '거절', color: 'warning' },
           confirmed: { label: '확정', color: 'info' },
@@ -478,6 +461,29 @@ const DailyFoodPurchaseOrderPage = () => {
             color={status.color}
             size="small"
           />
+        );
+      }
+    },
+    {
+      field: 'edit',
+      headerName: '수정',
+      flex: 0.10,
+      minWidth: 70,
+      align: 'center',
+      headerAlign: 'center',
+      sortable: false,
+      renderCell: (params) => {
+        return (
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRowClick({ row: params.row });
+            }}
+            sx={{ color: 'primary.main' }}
+          >
+            <EditIcon fontSize="small" />
+          </IconButton>
         );
       }
     }
@@ -547,20 +553,20 @@ const DailyFoodPurchaseOrderPage = () => {
                 </Card>
               </Box>
 
-              {/* 우측 카드 - SMS 발송 버튼 (25%) */}
+              {/* 우측 카드 - SMS 발송 (25%) */}
               <Box sx={{ width: '25%' }}>
                 <Card sx={{ height: '100%', borderLeft: 4, borderColor: 'info.main' }}>
-                  <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', py: 2 }}>
+                  <CardContent sx={{ py: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                     <Button
                       variant="contained"
-                      size="small"
+                      size="medium"
                       fullWidth
                       startIcon={<SendIcon />}
                       onClick={handleOpenConfirmDialog}
                       disabled={sendingSms || loading}
                       color="info"
                     >
-                      {sendingSms ? 'SMS 발송 중...' : '전체 매입주문 SMS 발송'}
+                      {sendingSms ? 'SMS 발송 중...' : '전체 SMS 발송'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -627,26 +633,6 @@ const DailyFoodPurchaseOrderPage = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-
-      {/* SMS 케밥메뉴 */}
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-        anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'right',
-        }}
-        transformOrigin={{
-          vertical: 'top',
-          horizontal: 'right',
-        }}
-      >
-        <MenuItem onClick={handleSendSmsFromMenu} disabled={sendingSms}>
-          <SendIcon fontSize="small" sx={{ mr: 1 }} />
-          SMS 발송
-        </MenuItem>
-      </Menu>
 
       {/* SMS 발송 확인 모달 */}
       <Dialog

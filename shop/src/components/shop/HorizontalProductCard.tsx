@@ -252,10 +252,10 @@ const HorizontalProductCard: React.FC<HorizontalProductCardProps> = ({
                   boxShadow: 'none',
                   transition: 'all 0.2s',
                   transform: addAnimation ? 'scale(0.95)' : 'scale(1)',
-                  bgcolor: justAdded ? 'success.main' : 'primary.main',
+                  bgcolor: justAdded ? 'primary.main' : 'success.main',
                   '&:hover': {
                     boxShadow: 2,
-                    bgcolor: justAdded ? 'success.dark' : 'primary.dark',
+                    bgcolor: justAdded ? 'primary.dark' : 'success.dark',
                   },
                 }}
               >

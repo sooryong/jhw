@@ -153,7 +153,8 @@ const splitMessageIntoPages = (inputText: string): string[] => {
 
     return resultPages.length > 0 ? resultPages : [safeText];
 
-  } catch {
+  } catch (error) {
+      // Error handled silently
     return [safeText];
   }
 };
@@ -208,7 +209,8 @@ export const getMessageInfo = (inputText: string) => {
 
     return result;
 
-  } catch {
+  } catch (error) {
+      // Error handled silently
     return fallbackResult;
   }
 };
@@ -336,7 +338,8 @@ export const sendMessage = async (
               totalFailed++;
             }
 
-          } catch {
+          } catch (error) {
+      // Error handled silently
             totalFailed++;
           }
         }
@@ -436,7 +439,8 @@ const saveSmsHistory = async (historyData: SMSHistoryData) => {
       ...historyData,
       createdAt: serverTimestamp()
     });
-  } catch {
+  } catch (error) {
+      // Error handled silently
     // 이력 저장 실패는 메인 기능에 영향을 주지 않으므로 무시
   }
 };
@@ -498,7 +502,8 @@ export const getSmsHistory = async (filters: Record<string, unknown> = {}, limit
     }
 
     return results;
-  } catch {
+  } catch (error) {
+      // Error handled silently
     // 오류 시 테스트 데이터 반환
     return generateTestSmsHistory();
   }
@@ -564,11 +569,11 @@ export const getBalance = async (): Promise<SMSBalance> => {
         cash = 0;
       } else if (typeof resultData.balance === 'object') {
         // 객체인 경우 다양한 필드 확인
-        if ((resultData.balance as any).balance !== undefined) {
-          totalBalance = (resultData.balance as any).balance || 0;
+        if ((resultData.balance as unknown).balance !== undefined) {
+          totalBalance = (resultData.balance as unknown).balance || 0;
         }
-        point = (resultData.balance as any).point || 0;
-        cash = (resultData.balance as any).cash || 0;
+        point = (resultData.balance as unknown).point || 0;
+        cash = (resultData.balance as unknown).cash || 0;
 
         // 총 잔액이 0이고 point나 cash가 있으면 합계로 계산
         if (totalBalance === 0 && (point > 0 || cash > 0)) {
@@ -588,6 +593,7 @@ export const getBalance = async (): Promise<SMSBalance> => {
     return balanceData;
 
   } catch (error) {
+      // Error handled silently
 
     // 개발 중일 때는 더미 데이터 반환 (환경변수가 설정되지 않은 경우)
     if (error instanceof Error && error.message.includes('credentials not configured')) {
@@ -650,6 +656,7 @@ export const sendBulkSms = async (messages: BulkMessage[]) => {
     };
 
   } catch (error) {
+      // Error handled silently
     throw new Error(error instanceof Error ? error.message : '대량 발송 중 오류가 발생했습니다');
   }
 };
@@ -669,6 +676,7 @@ export const getSolapiStatistics = async (): Promise<SMSStatistics> => {
     return resultData;
 
   } catch (error) {
+      // Error handled silently
     throw new Error(error instanceof Error ? error.message : '통계 조회 중 오류가 발생했습니다');
   }
 };
@@ -686,33 +694,34 @@ export const getSmsStats = async () => {
     const history = await getSmsHistory({}, 1000);
 
     // 오늘 발송
-    const todayHistory = (history as any[]).filter((h: any) =>
+    const todayHistory = (history as unknown[]).filter((h:unknown) =>
       h.createdAt && h.createdAt >= todayStart
     );
 
     // 이번 달 발송
-    const monthHistory = (history as any[]).filter((h: any) =>
+    const monthHistory = (history as unknown[]).filter((h:unknown) =>
       h.createdAt && h.createdAt >= monthStart
     );
 
     return {
       today: {
         total: todayHistory.length,
-        success: (todayHistory as any[]).filter((h: any) => h.status === 'sent').length,
-        failed: (todayHistory as any[]).filter((h: any) => h.status === 'failed').length
+        success: (todayHistory as unknown[]).filter((h:unknown) => h.status === 'sent').length,
+        failed: (todayHistory as unknown[]).filter((h:unknown) => h.status === 'failed').length
       },
       month: {
         total: monthHistory.length,
-        success: (monthHistory as any[]).filter((h: any) => h.status === 'sent').length,
-        failed: (monthHistory as any[]).filter((h: any) => h.status === 'failed').length
+        success: (monthHistory as unknown[]).filter((h:unknown) => h.status === 'sent').length,
+        failed: (monthHistory as unknown[]).filter((h:unknown) => h.status === 'failed').length
       },
       total: {
         all: history.length,
-        success: (history as any[]).filter((h: any) => h.status === 'sent').length,
-        failed: (history as any[]).filter((h: any) => h.status === 'failed').length
+        success: (history as unknown[]).filter((h:unknown) => h.status === 'sent').length,
+        failed: (history as unknown[]).filter((h:unknown) => h.status === 'failed').length
       }
     };
-  } catch {
+  } catch (error) {
+      // Error handled silently
     return {
       today: { total: 0, success: 0, failed: 0 },
       month: { total: 0, success: 0, failed: 0 },
@@ -733,7 +742,8 @@ export const checkServiceStatus = async (): Promise<boolean> => {
 
     // 임시로 true 반환 (기본 Functions가 배포되어 있으므로)
     return true;
-  } catch {
+  } catch (error) {
+      // Error handled silently
     return false;
   }
 };

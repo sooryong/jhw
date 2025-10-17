@@ -42,8 +42,16 @@ export type Permission =
   // 원장관리
   | 'ledger.view'
   | 'ledger.export'
-  // 대리 쇼핑
-  | 'proxy-shopping.access'
+  // 수금관리
+  | 'payment.view'
+  | 'payment.create'
+  | 'payment.cancel'
+  | 'statement.generate'
+  // 지급관리
+  | 'supplier_payment.view'
+  | 'supplier_payment.create'
+  | 'supplier_payment.cancel'
+  | 'supplier_statement.generate'
   // 쇼핑몰
   | 'shop.access'
   | 'shop.order';
@@ -80,11 +88,21 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     'outbound.delete',
     'ledger.view',
     'ledger.export',
-    'proxy-shopping.access',
+    'payment.view',
+    'payment.create',
+    'payment.cancel',
+    'statement.generate',
+    'supplier_payment.view',
+    'supplier_payment.create',
+    'supplier_payment.cancel',
+    'supplier_statement.generate',
     'shop.access',
     'shop.order',
   ],
   staff: [
+    // SMS 센터
+    'settings.sms.view',
+    'settings.sms.send',
     // 입고관리
     'inbound.view',
     'inbound.create',
@@ -97,13 +115,24 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     'outbound.delete',
     // 원장관리 (조회만)
     'ledger.view',
-    // 대리 쇼핑
-    'proxy-shopping.access',
+    // 수금관리
+    'payment.view',
+    'payment.create',
+    'statement.generate',
+    // 지급관리
+    'supplier_payment.view',
+    'supplier_payment.create',
+    'supplier_statement.generate',
   ],
   customer: [
     // 쇼핑몰만
     'shop.access',
     'shop.order',
+    // 거래명세서 조회
+    'statement.generate',
+  ],
+  supplier: [
+    // 공급사는 현재 시스템 접근 권한 없음 (SMS 수신자 역할만)
   ],
 };
 
@@ -160,8 +189,15 @@ export const menuAccessRules: MenuAccess[] = [
   // 원장관리
   { path: '/ledger', requiredPermissions: ['ledger.view'] },
 
-  // 대리 쇼핑
-  { path: '/proxy-shopping', requiredPermissions: ['proxy-shopping.access'] },
+  // 수금관리
+  { path: '/payments', requiredPermissions: ['payment.view'] },
+  { path: '/customers/accounts', requiredPermissions: ['payment.view'] },
+  { path: '/customers/statement', requiredPermissions: ['statement.generate'] },
+
+  // 지급관리
+  { path: '/supplier-payments', requiredPermissions: ['supplier_payment.view'] },
+  { path: '/suppliers/accounts', requiredPermissions: ['supplier_payment.view'] },
+  { path: '/suppliers/statement', requiredPermissions: ['supplier_statement.generate'] },
 
   // 쇼핑몰
   { path: '/shop', requiredPermissions: ['shop.access'] },

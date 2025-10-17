@@ -43,6 +43,7 @@ class DailyOrderCycleService {
         autoResetScheduledAt: null
       };
     } catch (error) {
+      // Error handled silently
       console.error('Error getting confirmation status:', error);
       // 오류 시 안전한 기본값 (미확정, 오늘 00:00부터 시작)
       const today = new Date();
@@ -134,6 +135,7 @@ class DailyOrderCycleService {
           }
         }
       } catch (error) {
+      // Error handled silently
         console.error('매입주문 자동 생성 중 오류:', error);
         // 매입주문 생성 실패해도 확정은 진행 (에러를 throw하지 않음)
       }
@@ -152,11 +154,12 @@ class DailyOrderCycleService {
       };
 
       if (docSnap.exists()) {
-        await updateDoc(docRef, confirmationData as any);
+        await updateDoc(docRef, confirmationData as unknown);
       } else {
         await setDoc(docRef, confirmationData);
       }
     } catch (error) {
+      // Error handled silently
       console.error('Error confirming daily food:', error);
       throw error;
     }
@@ -178,6 +181,7 @@ class DailyOrderCycleService {
         isConfirmed: false
       });
     } catch (error) {
+      // Error handled silently
       console.error('Error resetting confirmation status:', error);
       throw error;
     }

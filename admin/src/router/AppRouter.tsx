@@ -24,31 +24,50 @@ import ProductAddPage from '../pages/product/ProductAddPage';
 import ProductDetailPage from '../pages/product/ProductDetailPage';
 import UserSettings from '../pages/user/UserSettings';
 import UserChangePasswordPage from '../pages/user/UserChangePasswordPage';
-import ProxyShoppingPage from '../pages/proxy-shopping/ProxyShoppingPage';
 // 일일주문 확정 시스템
-import DailyOrderManagementPage from '../pages/orders/DailyOrderManagementPage';
+import DailyOrderConfirmationPage from '../pages/orders/DailyOrderConfirmationPage';
 import DailyFoodPurchaseOrderPage from '../pages/orders/DailyFoodPurchaseOrderPage';
 
 // 공통 페이지 (변경 없음)
 import CustomerOrderListPage from '../pages/orders/CustomerOrderListPage';
 import ProductAggregationPage from '../pages/orders/ProductAggregationPage';
 import ProductAggregationDetailPage from '../pages/orders/ProductAggregationDetailPage';
-import DailyOrderInboundManagementPage from '../pages/inbound/DailyOrderInboundManagementPage';
+import DailyOrderInboundPage from '../pages/inbound/DailyOrderInboundPage';
 import DailyOrderInboundInspectionPage from '../pages/inbound/DailyOrderInboundInspectionPage';
 import DailyOrderInboundPrintView from '../pages/inbound/DailyOrderInboundPrintView';
-import PurchaseLedgerListPage from '../pages/inbound/PurchaseLedgerListPage';
+import SupplierLedgerManagementPage from '../pages/inbound/SupplierLedgerManagementPage';
+import PurchaseLedgerDetailPage from '../pages/inbound/PurchaseLedgerDetailPage';
+import DailyOrderOutboundPage from '../pages/outbound/DailyOrderOutboundPage';
+import DailyOrderOutboundInspectionPage from '../pages/outbound/DailyOrderOutboundInspectionPage';
+import DailyOrderOutboundPrintView from '../pages/outbound/DailyOrderOutboundPrintView';
+import SaleLedgerListPage from '../pages/outbound/SaleLedgerListPage';
+import SaleLedgerDetailPage from '../pages/outbound/SaleLedgerDetailPage';
+import AccountLedgerPage from '../pages/account/AccountLedgerPage';
 import PrintCenter from '../components/print/PrintCenter';
 import ProtectedRoute from '../components/ProtectedRoute';
 import RoleBasedRedirect from '../components/RoleBasedRedirect';
 import MainLayout from '../components/layout/MainLayout';
+// 수금 관리
+import CustomerCollectionListPage from '../pages/customer-collections/CustomerCollectionListPage';
+import CustomerCollectionCreatePage from '../pages/customer-collections/CustomerCollectionCreatePage';
+import CustomerLedgerPage from '../pages/customers/CustomerLedgerPage';
+import CustomerAccountListPage from '../pages/customers/CustomerAccountListPage';
+import CustomerStatementPage from '../pages/customers/CustomerStatementPage';
+import CustomerUsersPage from '../pages/customers/CustomerUsersPage';
+// 지급 관리
+import SupplierPayoutListPage from '../pages/supplier-payouts/SupplierPayoutListPage';
+import SupplierPayoutCreatePage from '../pages/supplier-payouts/SupplierPayoutCreatePage';
+import SupplierAccountListPage from '../pages/suppliers/SupplierAccountListPage';
+import SupplierStatementPage from '../pages/suppliers/SupplierStatementPage';
+import SupplierLedgerPage from '../pages/suppliers/SupplierLedgerPage';
 
 // 쇼핑몰 컴포넌트 제거 (v2.0 - jws-shop으로 분리됨)
 
 /**
  * 권한 시스템:
  * - admin: 모든 기능 접근 가능
- * - staff: 입고/출하/원장(조회), 대리쇼핑 접근 가능
- * - customer: 쇼핑몰만 접근 가능
+ * - staff: 입고/출하/원장(조회) 접근 가능
+ * - customer: 플랫폼 접근 불가 (쇼핑몰만 이용 가능)
  */
 
 const AppRouter: React.FC = () => {
@@ -78,7 +97,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DailyOrderManagementPage />
+              <DailyOrderConfirmationPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -135,7 +154,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DailyOrderInboundManagementPage />
+              <DailyOrderInboundPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -173,36 +192,95 @@ const AppRouter: React.FC = () => {
         }
       />
 
-      {/* 매입 원장 조회 */}
+      {/* 공급사 원장 관리 */}
       <Route
         path="/ledgers/purchase"
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <PurchaseLedgerListPage />
+              <SupplierLedgerManagementPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 매입 원장 상세 */}
+      <Route
+        path="/ledgers/purchase/detail/:ledgerNumber"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <PurchaseLedgerDetailPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 매출 원장 조회 */}
+      <Route
+        path="/ledgers/sales"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <SaleLedgerListPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 매출 원장 상세 */}
+      <Route
+        path="/ledgers/sales/detail/:ledgerNumber"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <SaleLedgerDetailPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 거래처원장 조회 */}
+      <Route
+        path="/account-ledger"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <AccountLedgerPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 출하 관리 라우트 */}
+      <Route
+        path="/orders/outbound"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <DailyOrderOutboundPage />
             </MainLayout>
           </ProtectedRoute>
         }
       />
 
       <Route
-        path="/outbound"
+        path="/orders/outbound/inspect/:orderId"
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <div>출하 관리 (개발 예정)</div>
+              <DailyOrderOutboundInspectionPage />
             </MainLayout>
           </ProtectedRoute>
         }
       />
 
-      {/* 대리 쇼핑 - admin/staff 전용 */}
       <Route
-        path="/proxy-shopping"
+        path="/orders/outbound/print/:orderId"
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <ProxyShoppingPage />
+              <DailyOrderOutboundPrintView />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -248,6 +326,17 @@ const AppRouter: React.FC = () => {
           <ProtectedRoute allowedRoles={['admin']}>
             <MainLayout>
               <CustomerDetailPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/customers/:businessNumber/users"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <MainLayout>
+              <CustomerUsersPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -345,6 +434,120 @@ const AppRouter: React.FC = () => {
         }
       />
 
+      {/* 고객사 원장 통합 페이지 */}
+      <Route
+        path="/customers/ledger"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <CustomerLedgerPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 공급사 원장 통합 페이지 */}
+      <Route
+        path="/suppliers/ledger"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <SupplierLedgerPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 수금 관리 라우트 (개별 접근용 유지) */}
+      <Route
+        path="/customer-collections"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <CustomerCollectionListPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/customer-collections/create"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <CustomerCollectionCreatePage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/customers/accounts"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <CustomerAccountListPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/customers/statement"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff', 'customer']}>
+            <MainLayout>
+              <CustomerStatementPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 지급 관리 라우트 (개별 접근용 유지) */}
+      <Route
+        path="/supplier-payouts"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <SupplierPayoutListPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/supplier-payouts/create"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <SupplierPayoutCreatePage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/suppliers/accounts"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <SupplierAccountListPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/suppliers/statement"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <SupplierStatementPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
       {/* 향후 확장 예정 라우트들 */}
 
       <Route
@@ -372,7 +575,7 @@ const AppRouter: React.FC = () => {
       <Route
         path="/sms"
         element={
-          <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
               <SMSCenterPage />
             </MainLayout>

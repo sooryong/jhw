@@ -124,6 +124,7 @@ const ProductDetailPage: React.FC = () => {
       updateFavorites(updatedFavorites);
 
     } catch (error) {
+      // Error handled silently
       console.error('즐겨찾기 업데이트 실패:', error);
       setError('즐겨찾기 업데이트에 실패했습니다.');
 

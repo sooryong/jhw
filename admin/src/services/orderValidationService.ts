@@ -97,6 +97,7 @@ class OrderValidationService {
           }
         }
       } catch (error) {
+      // Error handled silently
         console.error(`Error checking inventory for product ${item.productId}:`, error);
         errors.push({
           field: `orderItems.${item.productId}`,
@@ -134,6 +135,7 @@ class OrderValidationService {
           });
         }
       } catch (error) {
+      // Error handled silently
         console.error(`Error validating quantity for product ${item.productId}:`, error);
       }
     }
@@ -185,6 +187,7 @@ class OrderValidationService {
           });
         }
       } catch (error) {
+      // Error handled silently
         console.error(`Error validating price for product ${item.productId}:`, error);
       }
     }
@@ -217,6 +220,7 @@ class OrderValidationService {
           });
         }
       } catch (error) {
+      // Error handled silently
         console.error(`Error validating product active status for ${item.productId}:`, error);
       }
     }

@@ -43,8 +43,8 @@ export const sendSms = onCall(
 
       // SOLAPI 메시지 서비스 초기화
       const messageService = new SolapiMessageService(
-        solapiApiKey.value(),
-        solapiApiSecret.value()
+        solapiApiKey.value().trim(),
+        solapiApiSecret.value().trim()
       );
 
       console.log('📤 SOLAPI 메시지 발송 시작:', {

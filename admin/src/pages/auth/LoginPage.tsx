@@ -195,7 +195,7 @@ const LoginPage: React.FC = () => {
 
           <Box sx={{ mt: 2, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-              진현유통 v2.1.0
+              진현유통 v0.9.0
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
               개발 모드 - 임시 로그인: 아무 값이나 입력하세요

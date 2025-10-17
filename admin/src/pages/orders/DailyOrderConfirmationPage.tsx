@@ -1,5 +1,5 @@
 /**
- * 파일 경로: /src/pages/orders/DailyOrderManagementPage.tsx
+ * 파일 경로: /src/pages/orders/DailyOrderConfirmationPage.tsx
  * 작성 날짜: 2025-10-10
  * 업데이트: v1.4 - 3-패널 통합 워크플로우
  * 주요 내용: 일일주문 확정 대시보드 - 3개 패널 레이아웃
@@ -32,24 +32,24 @@ import {
   ErrorOutline as ErrorOutlineIcon,
   ArrowForward as ArrowForwardIcon
 } from '@mui/icons-material';
+import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import dailySaleOrderFlowService from '../../services/dailySaleOrderFlowService';
 import dailySaleOrderAggregationService from '../../services/dailySaleOrderAggregationService';
-import purchaseOrderService from '../../services/purchaseOrderService';
+import dailyFoodPurchaseOrderService from '../../services/dailyFoodPurchaseOrderService';
 import productService from '../../services/productService';
 import { useAuth } from '../../hooks/useAuth';
 
-const DailyOrderManagementPage = () => {
+const DailyOrderConfirmationPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [refreshKey, setRefreshKey] = useState(0);
 
   // 집계 데이터
   const [totalOrders, setTotalOrders] = useState({ count: 0, products: 0, amount: 0 });
   const [regularOrders, setRegularOrders] = useState({ count: 0, products: 0, amount: 0 });
   const [additionalOrders, setAdditionalOrders] = useState({ count: 0, products: 0, amount: 0 });
-  const [totalPurchaseOrders, setTotalPurchaseOrders] = useState(0);
 
   // 일일식품 집계 데이터
   const [dailyFoodStats, setDailyFoodStats] = useState({ products: 0, saleAmount: 0, purchaseOrders: 0, purchaseAmount: 0, confirmedCount: 0 });
@@ -60,26 +60,60 @@ const DailyOrderManagementPage = () => {
   const [closedAt, setClosedAt] = useState<Date | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
 
-  // Panel 2, 3 마감 상태 (일일주문 마감 활성화 조건)
-  const [isPurchaseOrdersClosed, setIsPurchaseOrdersClosed] = useState(false);
-  const [isAdditionalOrdersClosed, setIsAdditionalOrdersClosed] = useState(false);
-
   // 스낵바
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
 
-  // 현재 시간 업데이트 (1분마다)
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
 
-  // 데이터 로드
+  // 데이터 로드 및 실시간 리스너
   useEffect(() => {
     loadData();
+
+    // Firestore 실시간 리스너 설정
+    let unsubscribeSaleOrders: (() => void) | null = null;
+    let unsubscribePurchaseOrders: (() => void) | null = null;
+
+    const setupListeners = async () => {
+      const status = await dailySaleOrderFlowService.getStatus();
+      const resetAt = status.resetAt || new Date(new Date().setHours(0, 0, 0, 0));
+
+      // 매출주문 리스너
+      const saleOrdersQuery = query(
+        collection(db, 'saleOrders'),
+        where('placedAt', '>=', Timestamp.fromDate(resetAt))
+      );
+
+      unsubscribeSaleOrders = onSnapshot(saleOrdersQuery, (snapshot) => {
+        if (snapshot.docChanges().length > 0) {
+          loadData();
+        }
+      });
+
+      // 매입주문 리스너 (일일식품)
+      const purchaseOrdersQuery = query(
+        collection(db, 'purchaseOrders'),
+        where('placedAt', '>=', Timestamp.fromDate(resetAt)),
+        where('category', '==', '일일식품')
+      );
+
+      unsubscribePurchaseOrders = onSnapshot(purchaseOrdersQuery, (snapshot) => {
+        if (snapshot.docChanges().length > 0) {
+          loadData();
+        }
+      });
+    };
+
+    setupListeners();
+
+    return () => {
+      if (unsubscribeSaleOrders) {
+        unsubscribeSaleOrders();
+      }
+      if (unsubscribePurchaseOrders) {
+        unsubscribePurchaseOrders();
+      }
+    };
   }, [refreshKey]);
 
   const loadData = async () => {
@@ -94,27 +128,27 @@ const DailyOrderManagementPage = () => {
       // 2. 매출주문 집계
       const aggregationData = await dailySaleOrderAggregationService.getActiveOrderAggregationData();
 
-      // 정규 주문
+      // 정규 주문 - 총 상품 수량 계산
       const regular = {
         count: aggregationData.total.regular.count,
         products: Object.keys(aggregationData.categories).reduce((sum, cat) => {
-          const regularProducts = aggregationData.categories[cat].suppliers
+          const categoryTotal = aggregationData.categories[cat].suppliers
             .flatMap(sup => sup.products)
-            .filter(p => p.placedQuantity > 0);
-          return sum + regularProducts.length;
+            .reduce((qtySum, p) => qtySum + p.placedQuantity, 0);
+          return sum + categoryTotal;
         }, 0),
         amount: aggregationData.total.regular.amount
       };
       setRegularOrders(regular);
 
-      // 추가 주문
+      // 추가 주문 - 총 상품 수량 계산
       const additional = {
         count: aggregationData.total.additional.count,
         products: Object.keys(aggregationData.categories).reduce((sum, cat) => {
-          const additionalProducts = aggregationData.categories[cat].suppliers
+          const categoryTotal = aggregationData.categories[cat].suppliers
             .flatMap(sup => sup.products)
-            .filter(p => p.confirmedQuantity > 0);
-          return sum + additionalProducts.length;
+            .reduce((qtySum, p) => qtySum + p.confirmedQuantity, 0);
+          return sum + categoryTotal;
         }, 0),
         amount: aggregationData.total.additional.amount
       };
@@ -131,9 +165,9 @@ const DailyOrderManagementPage = () => {
       // 3. 일일식품 카테고리 집계 (정규 매출주문)
       const dailyFoodCategory = aggregationData.categories['일일식품'];
       if (dailyFoodCategory) {
-        // 매출주문 집계
+        // 매출주문 집계 - 총 상품 수량 계산
         const products = dailyFoodCategory.suppliers.reduce((sum, sup) =>
-          sum + sup.products.filter(p => p.placedQuantity > 0).length, 0
+          sum + sup.products.reduce((qtySum, p) => qtySum + p.placedQuantity, 0), 0
         );
         const saleAmount = dailyFoodCategory.suppliers.reduce((sum, sup) =>
           sum + sup.products.reduce((pSum, p) => pSum + p.placedAmount, 0), 0
@@ -145,10 +179,9 @@ const DailyOrderManagementPage = () => {
         let confirmedCount = 0;
         try {
           // resetAt 이후의 일일식품 매입주문 조회
-          const purchaseOrdersList = await purchaseOrderService.getPurchaseOrders({
-            category: '일일식품',
-            startDate: flowStatus.resetAt || undefined
-          });
+          const purchaseOrdersList = await dailyFoodPurchaseOrderService.getOrdersSinceReset(
+            flowStatus.resetAt || undefined
+          );
 
           // 각 매입주문의 금액 계산 및 확정 건수 계산
           for (const order of purchaseOrdersList) {
@@ -184,12 +217,6 @@ const DailyOrderManagementPage = () => {
       } else {
         setDailyFoodStats({ products: 0, saleAmount: 0, purchaseOrders: 0, purchaseAmount: 0, confirmedCount: 0 });
       }
-
-      // 4. 전체 매입주문 건수 집계 (모든 카테고리의 공급사 수 합계)
-      const totalPO = Object.keys(aggregationData.categories).reduce((sum, cat) => {
-        return sum + aggregationData.categories[cat].suppliers.length;
-      }, 0);
-      setTotalPurchaseOrders(totalPO);
 
     } catch (error) {
       console.error('Error loading data:', error);
@@ -459,19 +486,24 @@ const DailyOrderManagementPage = () => {
                         </Box>
                       </Box>
 
-                      {/* 마감 버튼 */}
+                      {/* 마감 버튼 - admin 전용 */}
                       <Box sx={{ mt: 1 }}>
                         <Button
                           variant="contained"
-                          color={!isClosed ? "primary" : "inherit"}
+                          color={!isClosed ? "error" : "inherit"}
                           size="large"
                           fullWidth
                           onClick={handleCloseClick}
-                          disabled={isClosed}
+                          disabled={isClosed || user?.role !== 'admin'}
                           sx={{ minHeight: '48px' }}
                         >
                           정규 매출주문 마감
                         </Button>
+                        {user?.role !== 'admin' && !isClosed && (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block', textAlign: 'center' }}>
+                            관리자만 마감할 수 있습니다
+                          </Typography>
+                        )}
                       </Box>
                     </CardContent>
                   </Card>
@@ -807,33 +839,6 @@ const DailyOrderManagementPage = () => {
                         </Box>
                       </Box>
 
-                      {/* 일일주문 마감 버튼 영역 */}
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
-                          (개발용)
-                        </Typography>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          size="large"
-                          onClick={async () => {
-                            try {
-                              await dailySaleOrderFlowService.reset();
-                              setIsPurchaseOrdersClosed(false);
-                              setIsAdditionalOrdersClosed(false);
-                              await loadData();
-                              showSnackbar('업무가 리셋되었습니다. 새로운 정규 주문 접수를 시작합니다.', 'success');
-                            } catch (error) {
-                              console.error('Error resetting:', error);
-                              showSnackbar('리셋 처리 중 오류가 발생했습니다.', 'error');
-                            }
-                          }}
-                          disabled={!isClosed}
-                          sx={{ width: '50%', minHeight: '48px' }}
-                        >
-                          일일주문 마감
-                        </Button>
-                      </Box>
                     </CardContent>
                   </Card>
                 </Grid>
@@ -849,17 +854,31 @@ const DailyOrderManagementPage = () => {
         onClose={handleCloseDialogClose}
         maxWidth="sm"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: 6
+          }
+        }}
       >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'error.main' }}>
-          <ErrorOutlineIcon fontSize="large" color="error" />
-          <Typography variant="h6" component="span" sx={{ fontWeight: 700 }}>
-            정규 매출주문 마감
-          </Typography>
+        <DialogTitle sx={{
+          textAlign: 'center',
+          pt: 4,
+          pb: 2,
+          bgcolor: 'error.main',
+          color: 'white'
+        }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+            <AssignmentIcon sx={{ fontSize: 64 }} />
+            <Typography variant="h5" sx={{ fontWeight: 700 }}>
+              정규 매출주문 마감
+            </Typography>
+          </Box>
         </DialogTitle>
-        <DialogContent>
-          <Alert severity="warning" sx={{ mb: 2 }}>
+        <DialogContent sx={{ pt: 3, pb: 2 }}>
+          <Alert severity="info" sx={{ mb: 2 }}>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              ⚠️ 이 작업은 되돌릴 수 없습니다!
+              정규 주문을 마감하고 일일식품 매입주문을 생성합니다.
             </Typography>
           </Alert>
           <Box sx={{ mb: 2 }}>
@@ -872,13 +891,20 @@ const DailyOrderManagementPage = () => {
             <Typography variant="body1" sx={{ mb: 1.5, color: 'text.primary' }}>
               ✓ 추가 매출주문은 자동으로 confirmed 상태로 생성됩니다.
             </Typography>
-            <Typography variant="body1" sx={{ fontWeight: 600, color: 'text.primary' }}>
-              정규 매출주문을 마감하시겠습니까?
-            </Typography>
           </Box>
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              ⚠️ 이 작업은 되돌릴 수 없습니다!
+            </Typography>
+          </Alert>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={handleCloseDialogClose} variant="outlined" size="large">
+        <DialogActions sx={{ px: 3, pb: 3, justifyContent: 'center', gap: 2 }}>
+          <Button
+            onClick={handleCloseDialogClose}
+            variant="outlined"
+            size="large"
+            sx={{ minWidth: 120 }}
+          >
             취소
           </Button>
           <Button
@@ -886,9 +912,14 @@ const DailyOrderManagementPage = () => {
             variant="contained"
             color="error"
             size="large"
+            startIcon={<AssignmentIcon />}
             autoFocus
+            sx={{
+              minWidth: 200,
+              fontWeight: 600
+            }}
           >
-            마감 진행
+            정규 매출주문 마감
           </Button>
         </DialogActions>
       </Dialog>
@@ -908,4 +939,4 @@ const DailyOrderManagementPage = () => {
   );
 };
 
-export default DailyOrderManagementPage;
+export default DailyOrderConfirmationPage;

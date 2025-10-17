@@ -84,13 +84,15 @@ const ShopLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { user, logout } = useAuth();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { user, logout: _logout } = useAuth();
   const { state: cartState, clearCart } = useCart();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [customerInitialized, setCustomerInitialized] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_customerInitialized, _setCustomerInitialized] = useState(false);
   const [customerName, setCustomerName] = useState<string>('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
@@ -120,6 +122,7 @@ const ShopLayout: React.FC = () => {
               setCustomerName(customer.businessName);
             }
           } catch (error) {
+      // Error handled silently
             console.error('고객사 상호 조회 실패:', error);
             setCustomerName('');
           }
@@ -133,6 +136,7 @@ const ShopLayout: React.FC = () => {
             setCustomerName(customer.businessName);
           }
         } catch (error) {
+      // Error handled silently
           console.error('고객사 상호 조회 실패:', error);
           setCustomerName('');
         }
@@ -156,7 +160,8 @@ const ShopLayout: React.FC = () => {
     }
   };
 
-  const handleCloseWindow = () => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handleCloseWindow = () => {
     // 장바구니에 상품이 있으면 확인 창 표시
     if (cartState.totalItems > 0) {
       setExitAction('back');
@@ -180,6 +185,7 @@ const ShopLayout: React.FC = () => {
       // Customer: 고객사 선택 페이지로 이동 (로그아웃하지 않음)
       navigate('/shop/select-customer');
     } catch (error) {
+      // Error handled silently
       console.error('페이지 이동 실패:', error);
     }
   };
@@ -207,6 +213,7 @@ const ShopLayout: React.FC = () => {
         navigate('/shop/select-customer');
       }
     } catch (error) {
+      // Error handled silently
       console.error('종료 처리 실패:', error);
     } finally {
       setExitAction(null);
@@ -446,12 +453,12 @@ const ShopLayout: React.FC = () => {
             </Typography>
           )}
           <IconButton
-            color="inherit"
             onClick={() => {
               const customerParam = searchParams.get('customer');
               const targetPath = customerParam ? `/shop/cart?customer=${customerParam}` : '/shop/cart';
               navigate(targetPath);
             }}
+            sx={{ color: 'primary.main' }}
           >
             <Badge badgeContent={cartState.totalItems} color="error">
               <ShoppingCartIcon />

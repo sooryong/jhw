@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/inbound/DailyOrderInboundManagementPage.tsx
+ * 파일 경로: /src/pages/inbound/DailyOrderInboundPage.tsx
  * 작성 날짜: 2025-10-06
- * 주요 내용: 일일주문 입고 관리 메인 페이지
+ * 주요 내용: 일일주문 입고 메인 페이지
  */
 
 import { useState, useEffect } from 'react';
@@ -14,8 +14,7 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Alert,
-  Checkbox
+  Alert
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import type { GridColDef } from '@mui/x-data-grid';
@@ -25,16 +24,15 @@ import {
 } from '@mui/icons-material';
 import type { PurchaseOrder } from '../../types/purchaseOrder';
 import { getPurchaseOrderStatusLabel, getPurchaseOrderStatusColor } from '../../types/purchaseOrder';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { openPrintCenter } from '../../utils/printUtils';
 
-const DailyOrderInboundManagementPage = () => {
+const DailyOrderInboundPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [paginationModel, setPaginationModel] = useState({
     page: 0,
     pageSize: 10
@@ -75,29 +73,31 @@ const DailyOrderInboundManagementPage = () => {
     openPrintCenter('inbound-inspection', [orderId]);
   };
 
-  const handleInspect = (orderId: string) => {
-    navigate(`/orders/inbound/inspect/${orderId}`);
-  };
+  const handleInspect = async (order: PurchaseOrder) => {
+    // 완료된 주문이고 매입원장이 있으면 매입원장번호로 이동
+    if (order.status === 'completed' && order.purchaseLedgerId) {
+      try {
+        const ledgerRef = doc(db, 'purchaseLedgers', order.purchaseLedgerId);
+        const ledgerDoc = await getDoc(ledgerRef);
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(purchaseOrders.map(order => order.purchaseOrderNumber));
-    } else {
-      setSelectedIds([]);
+        if (ledgerDoc.exists()) {
+          const ledger = ledgerDoc.data();
+          navigate(`/orders/inbound/inspect/${ledger.purchaseLedgerNumber}`);
+          return;
+        }
+      } catch (error) {
+        console.error('Error fetching purchase ledger:', error);
+      }
     }
+
+    // 그 외의 경우 매입주문번호로 이동
+    navigate(`/orders/inbound/inspect/${order.purchaseOrderNumber}`);
   };
 
-  const handleSelectOne = (orderId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedIds(prev => [...prev, orderId]);
-    } else {
-      setSelectedIds(prev => prev.filter(id => id !== orderId));
-    }
-  };
-
-  const handlePrintSelected = () => {
-    if (selectedIds.length > 0) {
-      openPrintCenter('inbound-inspection', selectedIds);
+  const handlePrintAll = () => {
+    if (purchaseOrders.length > 0) {
+      const allOrderIds = purchaseOrders.map(order => order.purchaseOrderNumber);
+      openPrintCenter('inbound-inspection', allOrderIds);
     }
   };
 
@@ -106,7 +106,7 @@ const DailyOrderInboundManagementPage = () => {
     {
       field: 'purchaseOrderNumber',
       headerName: '매입주문 코드',
-      flex: 0.18,
+      flex: 0.15,
       sortable: true,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
@@ -119,7 +119,7 @@ const DailyOrderInboundManagementPage = () => {
     {
       field: 'status',
       headerName: '상태',
-      flex: 0.12,
+      flex: 0.10,
       align: 'center',
       headerAlign: 'center',
       sortable: true,
@@ -137,7 +137,7 @@ const DailyOrderInboundManagementPage = () => {
     {
       field: 'supplierName',
       headerName: '공급사',
-      flex: 0.28,
+      flex: 0.25,
       sortable: true,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
@@ -148,60 +148,46 @@ const DailyOrderInboundManagementPage = () => {
       )
     },
     {
-      field: 'totalQuantity',
-      headerName: '총 수량',
-      flex: 0.12,
+      field: 'productTypes',
+      headerName: '상품 종류',
+      flex: 0.10,
       align: 'center',
       headerAlign: 'center',
       sortable: true,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
           <Typography variant="body2" color="text.secondary">
-            {params.value.toLocaleString()}
+            {params.value}종
+          </Typography>
+        </Box>
+      )
+    },
+    {
+      field: 'totalQuantity',
+      headerName: '상품 수량',
+      flex: 0.10,
+      align: 'center',
+      headerAlign: 'center',
+      sortable: true,
+      renderCell: (params) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+          <Typography variant="body2" color="text.secondary">
+            {params.value.toLocaleString()}개
           </Typography>
         </Box>
       )
     },
     {
       field: 'print',
-      headerName: '인쇄',
+      headerName: '검수표',
       flex: 0.15,
       align: 'center',
       headerAlign: 'center',
       sortable: false,
-      renderHeader: () => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Checkbox
-            checked={selectedIds.length > 0 && selectedIds.length === purchaseOrders.length}
-            indeterminate={selectedIds.length > 0 && selectedIds.length < purchaseOrders.length}
-            onChange={(e) => handleSelectAll(e.target.checked)}
-          />
-          {selectedIds.length > 0 ? (
-            <Button
-              variant="contained"
-              size="small"
-              onClick={handlePrintSelected}
-            >
-              선택({selectedIds.length}) 인쇄
-            </Button>
-          ) : (
-            <Typography variant="body2">인쇄</Typography>
-          )}
-        </Box>
-      ),
       renderCell: (params) => {
         const order = params.row as PurchaseOrder;
-        const isSelected = selectedIds.includes(order.purchaseOrderNumber);
         return (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, height: '100%' }}>
-            <Checkbox
-              checked={isSelected}
-              onChange={(e) => {
-                e.stopPropagation();
-                handleSelectOne(order.purchaseOrderNumber, e.target.checked);
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
             <Button
               variant="outlined"
               size="small"
@@ -233,7 +219,7 @@ const DailyOrderInboundManagementPage = () => {
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
-                handleInspect(order.purchaseOrderNumber);
+                handleInspect(order);
               }}
             >
               {order.status === 'completed' ? '보기' : '입고'}
@@ -254,9 +240,19 @@ const DailyOrderInboundManagementPage = () => {
             매입주문 입고
           </Typography>
         </Box>
-        <Button variant="outlined" onClick={loadData} size="small">
-          새로고침
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="contained"
+            onClick={handlePrintAll}
+            startIcon={<PrintIcon />}
+            disabled={purchaseOrders.length === 0}
+          >
+            검수표 전체 인쇄
+          </Button>
+          <Button variant="outlined" onClick={loadData}>
+            새로고침
+          </Button>
+        </Box>
       </Box>
 
       {/* 로딩 */}
@@ -280,6 +276,7 @@ const DailyOrderInboundManagementPage = () => {
             rows={purchaseOrders.map(order => ({
               ...order,
               supplierName: order.supplierInfo.businessName,
+              productTypes: order.orderItems.length,
               totalQuantity: order.orderItems.reduce((sum, item) => sum + item.quantity, 0)
             }))}
             columns={columns}
@@ -291,7 +288,7 @@ const DailyOrderInboundManagementPage = () => {
             pageSizeOptions={[10, 20, 30]}
             paginationModel={paginationModel}
             onPaginationModelChange={setPaginationModel}
-            onRowClick={(params) => handleInspect(params.row.purchaseOrderNumber)}
+            onRowClick={(params) => handleInspect(params.row)}
             sx={{
               '& .MuiDataGrid-row:hover': {
                 cursor: 'pointer',
@@ -322,4 +319,4 @@ const DailyOrderInboundManagementPage = () => {
   );
 };
 
-export default DailyOrderInboundManagementPage;
+export default DailyOrderInboundPage;

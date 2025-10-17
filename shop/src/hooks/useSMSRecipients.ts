@@ -65,7 +65,8 @@ export const useSMSRecipients = (options: UseSMSRecipientsOptions = {}): UseSMSR
     try {
       const currentCount = await getRecipientsCount();
       setCount(currentCount);
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 오류 처리: 수신자 수 조회 실패
     }
   }, []);

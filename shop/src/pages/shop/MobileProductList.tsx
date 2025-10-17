@@ -60,6 +60,11 @@ const MobileProductList: React.FC = () => {
   const [showHeader, setShowHeader] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
+  // 플로팅 버튼 드래그 상태
+  const [fabPosition, setFabPosition] = useState({ x: 75 }); // x는 퍼센트 (좌우 위치만)
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0 });
+
   // 데이터 로드
   useEffect(() => {
     if (!customerLoading && customer) {
@@ -203,6 +208,47 @@ const MobileProductList: React.FC = () => {
     setSearchText('');
   };
 
+  // 플로팅 버튼 드래그 핸들러 (좌우로만 이동)
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    // 현재 버튼의 절대 X 위치 계산
+    const currentXPixels = window.innerWidth * fabPosition.x / 100;
+    setDragStart({
+      x: e.clientX - currentXPixels,
+    });
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging) return;
+
+    // 새로운 X 위치 계산 (픽셀 단위)
+    const newXPixels = e.clientX - dragStart.x;
+    // 퍼센트로 변환
+    const newX = (newXPixels / window.innerWidth) * 100;
+
+    // 화면 경계 제한 (왼쪽 10% ~ 오른쪽 90%)
+    const boundedX = Math.max(10, Math.min(90, newX));
+
+    setFabPosition({ x: boundedX }); // Y축은 고정
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // 드래그 이벤트 리스너
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDragging, dragStart]);
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
@@ -266,6 +312,7 @@ const MobileProductList: React.FC = () => {
           {/* 데스크톱: 텍스트 버튼 */}
           <Button
             variant="contained"
+            color="primary"
             startIcon={
               <Badge badgeContent={cartState.totalItems} color="error">
                 <ShoppingCartIcon />
@@ -280,10 +327,6 @@ const MobileProductList: React.FC = () => {
               display: { xs: 'none', md: 'flex' },
               px: 12.66,
               whiteSpace: 'nowrap',
-              bgcolor: '#01579B',
-              '&:hover': {
-                bgcolor: '#003D82',
-              },
             }}
           >
             장바구니
@@ -389,24 +432,32 @@ const MobileProductList: React.FC = () => {
         </Container>
       </Box>
 
-      {/* 데스크톱 플로팅 장바구니 버튼 */}
+      {/* 데스크톱 플로팅 장바구니 버튼 (드래그 가능) */}
       {cartState.totalItems > 0 && (
         <Fab
           color="primary"
           aria-label="장바구니 보기"
           onClick={() => {
-            const customerParam = searchParams.get('customer');
-            const targetPath = customerParam ? `/shop/cart?customer=${customerParam}` : '/shop/cart';
-            navigate(targetPath);
+            if (!isDragging) {
+              const customerParam = searchParams.get('customer');
+              const targetPath = customerParam ? `/shop/cart?customer=${customerParam}` : '/shop/cart';
+              navigate(targetPath);
+            }
           }}
+          onMouseDown={handleMouseDown}
           sx={{
             display: { xs: 'none', md: 'flex' },
             position: 'fixed',
-            bottom: 16,
-            left: '75%',
+            bottom: 24, // 하단 고정
+            left: `${fabPosition.x}%`,
             transform: 'translateX(-50%)',
             zIndex: 1000,
             boxShadow: 4,
+            cursor: isDragging ? 'grabbing' : 'grab',
+            transition: isDragging ? 'none' : 'all 0.3s',
+            '&:hover': {
+              transform: isDragging ? 'translateX(-50%)' : 'translateX(-50%) scale(1.05)',
+            },
           }}
         >
           <Badge badgeContent={cartState.totalItems} color="error" max={99}>

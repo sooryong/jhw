@@ -76,7 +76,7 @@ const SaleOrderDetailDialog = ({
       minWidth: 80,
       align: 'center',
       headerAlign: 'center',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => (value as number)?.toLocaleString()
     },
     {
       field: 'unitPrice',
@@ -85,7 +85,7 @@ const SaleOrderDetailDialog = ({
       minWidth: 100,
       align: 'right',
       headerAlign: 'right',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => (value as number)?.toLocaleString()
     },
     {
       field: 'lineTotal',
@@ -94,7 +94,7 @@ const SaleOrderDetailDialog = ({
       minWidth: 100,
       align: 'right',
       headerAlign: 'right',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => (value as number)?.toLocaleString()
     }
   ];
 
@@ -107,28 +107,13 @@ const SaleOrderDetailDialog = ({
   // 합계 계산
   const totalQuantity = order.orderItems.reduce((sum, item) => sum + item.quantity, 0);
 
-  // 상태 레이블 및 색상
-  const getStatusInfo = (status: string) => {
-    const statusMap: Record<string, { label: string; color: 'default' | 'primary' | 'success' | 'warning' | 'error' }> = {
-      placed: { label: '접수', color: 'default' },
-      confirmed: { label: '확정', color: 'primary' },
-      completed: { label: '완료', color: 'success' },
-      pended: { label: '검토대기', color: 'warning' },
-      rejected: { label: '거부', color: 'error' },
-      cancelled: { label: '취소', color: 'error' }
-    };
-    return statusMap[status] || { label: status, color: 'default' };
-  };
-
-  const statusInfo = getStatusInfo(order.status);
-
   // 주문 단계 (정규/추가)
   const orderPhaseLabel = order.orderPhase === 'regular' ? '정규' : '추가';
   const orderPhaseColor = order.orderPhase === 'regular' ? 'primary' : 'secondary';
 
   // 주문 일시 포맷
-  const formatDate = (timestamp: any) => {
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const formatDate = (timestamp: unknown) => {
+    const date = (timestamp as { toDate?: () => Date }).toDate ? (timestamp as { toDate: () => Date }).toDate() : new Date(timestamp as string | number | Date);
     return date.toLocaleString('ko-KR', {
       month: '2-digit',
       day: '2-digit',
@@ -166,9 +151,10 @@ const SaleOrderDetailDialog = ({
           onStatusChanged();
         }
       }, 500);
-    } catch (error: any) {
+    } catch (error) {
+      // Error handled silently
       console.error('상태 변경 실패:', error);
-      setSnackbar({ open: true, message: error.message || '상태 변경에 실패했습니다.', severity: 'error' });
+      setSnackbar({ open: true, message: (error as Error).message || '상태 변경에 실패했습니다.', severity: 'error' });
     } finally {
       setProcessing(false);
     }

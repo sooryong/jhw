@@ -86,6 +86,7 @@ export const uploadImage = async (
             fileName: fileName,
           });
         } catch (error) {
+      // Error handled silently
           reject(error);
         }
       }

@@ -15,7 +15,6 @@ import {
   Alert,
   IconButton,
   Paper,
-  Chip,
   Tabs,
   Tab,
   Button

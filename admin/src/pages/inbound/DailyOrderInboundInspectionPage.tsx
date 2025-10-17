@@ -5,18 +5,12 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Container,
   Typography,
   Box,
   Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Button,
   TextField,
   CircularProgress,
@@ -26,6 +20,8 @@ import {
   Snackbar
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
+import { DataGrid } from '@mui/x-data-grid';
+import type { GridRenderCellParams } from '@mui/x-data-grid';
 import {
   Add as AddIcon,
   ArrowBack as BackIcon,
@@ -39,28 +35,31 @@ import type { PurchaseOrder } from '../../types/purchaseOrder';
 import type { Product } from '../../types/product';
 import type { PurchaseLedger } from '../../types/purchaseLedger';
 import { useAuth } from '../../contexts/AuthContext';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import QuickProductAddDialog from '../../components/inbound/QuickProductAddDialog';
 
 const DailyOrderInboundInspectionPage = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder | null>(null);
+  const [purchaseLedger, setPurchaseLedger] = useState<PurchaseLedger | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
     severity: 'success'
   });
+  const [quickAddDialogOpen, setQuickAddDialogOpen] = useState(false);
 
   interface InboundInspectionItemWithCategory extends InboundInspectionItem {
     category?: string;
+    inboundUnitPrice?: number; // 입고가격 추가
   }
   const [inspectionItems, setInspectionItems] = useState<InboundInspectionItemWithCategory[]>([]);
 
@@ -98,6 +97,9 @@ const DailyOrderInboundInspectionPage = () => {
 
       const ledger = ledgerDoc.data() as PurchaseLedger;
 
+      // 매입원장 데이터 저장
+      setPurchaseLedger(ledger);
+
       // Convert ledger items to inspection items format
       // 주문수량은 원본 매입주문에서 가져오기
       const items: InboundInspectionItemWithCategory[] = ledger.ledgerItems.map(item => {
@@ -109,6 +111,7 @@ const DailyOrderInboundInspectionPage = () => {
           orderedQuantity: orderItem?.quantity || 0,
           orderedUnitPrice: item.unitPrice,
           receivedQuantity: item.quantity,
+          inboundUnitPrice: item.unitPrice,
           category: item.category
         };
       });
@@ -129,7 +132,28 @@ const DailyOrderInboundInspectionPage = () => {
     setError(null);
 
     try {
-      const order = await purchaseOrderService.getPurchaseOrderById(orderId);
+      let purchaseOrderNumber = orderId;
+
+      // ID 패턴 확인: PL-로 시작하면 매입원장번호
+      if (orderId.startsWith('PL-')) {
+        // 매입원장에서 매입주문번호 찾기 (purchaseLedgerNumber 필드로 쿼리)
+        const ledgerQuery = query(
+          collection(db, 'purchaseLedgers'),
+          where('purchaseLedgerNumber', '==', orderId)
+        );
+        const ledgerSnapshot = await getDocs(ledgerQuery);
+
+        if (ledgerSnapshot.empty) {
+          setError('매입원장을 찾을 수 없습니다.');
+          setLoading(false);
+          return;
+        }
+
+        const ledger = ledgerSnapshot.docs[0].data() as PurchaseLedger;
+        purchaseOrderNumber = ledger.purchaseOrderNumber;
+      }
+
+      const order = await purchaseOrderService.getPurchaseOrderById(purchaseOrderNumber);
 
       if (!order) {
         setError('매입주문을 찾을 수 없습니다.');
@@ -144,10 +168,8 @@ const DailyOrderInboundInspectionPage = () => {
         return;
       }
 
-      if (order.status !== 'confirmed') {
-        setError('확정된 주문만 입고 처리할 수 있습니다.');
-        return;
-      }
+      // completed가 아닌 경우 매입원장 초기화
+      setPurchaseLedger(null);
 
       // 검수 품목 초기화 (주문 수량으로) + 카테고리 조회
       const itemsPromises = order.orderItems.map(async (item) => {
@@ -164,6 +186,7 @@ const DailyOrderInboundInspectionPage = () => {
             orderedQuantity: item.quantity,
             orderedUnitPrice: product?.purchasePrice || 0,
             receivedQuantity: item.quantity,
+            inboundUnitPrice: product?.purchasePrice || 0,
             category: product?.mainCategory || '미분류'
           };
         } catch (err) {
@@ -175,6 +198,7 @@ const DailyOrderInboundInspectionPage = () => {
             orderedQuantity: item.quantity,
             orderedUnitPrice: 0,
             receivedQuantity: item.quantity,
+            inboundUnitPrice: 0,
             category: '미분류'
           };
         }
@@ -191,7 +215,8 @@ const DailyOrderInboundInspectionPage = () => {
   };
 
   const handleReceivedQuantityChange = (productId: string, value: string) => {
-    const quantity = parseInt(value) || 0;
+    // 쉼표 제거 후 숫자로 변환
+    const quantity = parseInt(value.replace(/,/g, '')) || 0;
     setInspectionItems(prev =>
       prev.map(item =>
         item.productId === productId
@@ -201,12 +226,13 @@ const DailyOrderInboundInspectionPage = () => {
     );
   };
 
-  const handleUnitPriceChange = (productId: string, value: string) => {
-    const price = parseInt(value) || 0;
+  const handleInboundPriceChange = (productId: string, value: string) => {
+    // 쉼표 제거 후 숫자로 변환
+    const price = parseInt(value.replace(/,/g, '')) || 0;
     setInspectionItems(prev =>
       prev.map(item =>
         item.productId === productId
-          ? { ...item, orderedUnitPrice: price }
+          ? { ...item, inboundUnitPrice: price }
           : item
       )
     );
@@ -228,9 +254,44 @@ const DailyOrderInboundInspectionPage = () => {
       orderedQuantity: 0,
       orderedUnitPrice: 0,
       receivedQuantity: 0,
+      inboundUnitPrice: 0,
       category: product.mainCategory || '미분류'
     };
     setInspectionItems(prev => [...prev, newItem]);
+  };
+
+  const handleQuickAddProduct = (product: Product) => {
+    // 중복 확인
+    const isDuplicate = inspectionItems.some(item => item.productId === product.productId);
+    if (isDuplicate) {
+      setSnackbar({
+        open: true,
+        message: '이미 추가된 상품입니다.',
+        severity: 'error'
+      });
+      return;
+    }
+
+    // 새 항목 추가
+    const newItem: InboundInspectionItemWithCategory = {
+      productId: product.productId!,
+      productName: product.productName,
+      specification: product.specification || '',
+      orderedQuantity: 0, // 주문수량 0
+      orderedUnitPrice: product.purchasePrice || 0, // 최근 매입가격
+      receivedQuantity: 0, // 입고수량 0 (사용자가 입력)
+      inboundUnitPrice: product.purchasePrice || 0, // 입고가격 초기값
+      category: product.mainCategory || '미분류'
+    };
+
+    setInspectionItems(prev => [...prev, newItem]);
+    setQuickAddDialogOpen(false);
+
+    setSnackbar({
+      open: true,
+      message: '상품이 추가되었습니다.',
+      severity: 'success'
+    });
   };
 
 
@@ -251,12 +312,12 @@ const DailyOrderInboundInspectionPage = () => {
       return;
     }
 
-    // 매입단가 필수 검사
-    const hasInvalidPrice = inspectionItems.some(item => item.orderedUnitPrice <= 0);
+    // 입고가격 필수 검사
+    const hasInvalidPrice = inspectionItems.some(item => (item.inboundUnitPrice || 0) <= 0);
     if (hasInvalidPrice) {
       setSnackbar({
         open: true,
-        message: '매입단가는 필수 항목입니다. 0보다 큰 값을 입력해주세요.',
+        message: '입고가격은 필수 항목입니다. 0보다 큰 값을 입력해주세요.',
         severity: 'error'
       });
       return;
@@ -266,7 +327,7 @@ const DailyOrderInboundInspectionPage = () => {
     setError(null);
 
     try {
-      await completeInbound({
+      const result = await completeInbound({
         purchaseOrderNumber: orderId,
         inspectionItems,
         notes: '',
@@ -282,6 +343,11 @@ const DailyOrderInboundInspectionPage = () => {
       // 데이터 다시 로드하여 화면 갱신 (completed 상태로 전환됨)
       await loadPurchaseOrder();
       setIsEditMode(false);
+
+      // 매입원장번호로 URL 변경
+      if (result.purchaseLedgerNumber) {
+        navigate(`/orders/inbound/inspect/${result.purchaseLedgerNumber}`, { replace: true });
+      }
     } catch (err) {
       console.error('Error completing inbound:', err);
       setSnackbar({
@@ -362,121 +428,253 @@ const DailyOrderInboundInspectionPage = () => {
       {/* 주문 정보 */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 3 }}>
+          {purchaseLedger && (
+            <Grid size={{ xs: 12, md: 2.2 }}>
+              <Typography variant="caption" color="text.secondary">
+                매입원장 번호
+              </Typography>
+              <Typography variant="body1" fontWeight="medium" color="primary.main">
+                {purchaseLedger.purchaseLedgerNumber}
+              </Typography>
+            </Grid>
+          )}
+          <Grid size={{ xs: 12, md: purchaseLedger ? 2 : 2.2 }}>
             <Typography variant="caption" color="text.secondary">
-              매입주문 코드
+              매입주문 번호
             </Typography>
             <Typography variant="body1" fontWeight="medium">
               {purchaseOrder.purchaseOrderNumber}
             </Typography>
           </Grid>
-          <Grid size={{ xs: 12, md: 3 }}>
+          <Grid size={{ xs: 12, md: purchaseLedger ? 2 : 2.2 }}>
             <Typography variant="caption" color="text.secondary">
-              상태
+              {purchaseLedger ? '입고일시' : '생성일시'}
             </Typography>
-            <Box>
-              <Chip
-                label={purchaseOrder.status === 'completed' ? '입고완료' : '확정'}
-                size="small"
-                color={purchaseOrder.status === 'completed' ? 'success' : 'primary'}
-                variant="outlined"
-                sx={{ mt: 0.5 }}
-              />
-            </Box>
+            <Typography variant="body1" fontWeight="medium">
+              {purchaseLedger
+                ? `${purchaseLedger.receivedAt.toDate().toLocaleDateString('ko-KR')} ${purchaseLedger.receivedAt.toDate().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
+                : `${purchaseOrder.placedAt.toDate().toLocaleDateString('ko-KR')} ${purchaseOrder.placedAt.toDate().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
+              }
+            </Typography>
           </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
+          <Grid size={{ xs: 12, md: purchaseLedger ? 1.6 : 2 }}>
+            <Typography variant="caption" color="text.secondary">
+              합계 금액
+            </Typography>
+            <Typography variant="body1" fontWeight="bold" color="primary.main">
+              ₩{purchaseLedger
+                ? purchaseLedger.totalAmount.toLocaleString()
+                : inspectionItems.reduce((sum, item) => sum + (item.receivedQuantity * (item.inboundUnitPrice || 0)), 0).toLocaleString()
+              }
+            </Typography>
+          </Grid>
+          <Grid size={{ xs: 12, md: purchaseLedger ? 2.2 : 3 }}>
             <Typography variant="caption" color="text.secondary">
               공급사
             </Typography>
             <Typography variant="body1" fontWeight="medium">
-              {purchaseOrder.supplierInfo.businessName}
+              {purchaseLedger ? purchaseLedger.supplierInfo.businessName : purchaseOrder.supplierInfo.businessName}
             </Typography>
           </Grid>
-          <Grid size={{ xs: 12, md: 2 }}>
+          <Grid size={{ xs: 12, md: 1 }}>
             <Typography variant="caption" color="text.secondary">
-              총수량
+              상품 종류
             </Typography>
             <Typography variant="body1" fontWeight="medium">
-              {purchaseOrder.orderItems.reduce((sum, item) => sum + item.quantity, 0).toLocaleString()}
+              {purchaseLedger ? purchaseLedger.itemCount : purchaseOrder.orderItems.length}종
+            </Typography>
+          </Grid>
+          <Grid size={{ xs: 12, md: 1 }}>
+            <Typography variant="caption" color="text.secondary">
+              상품 수량
+            </Typography>
+            <Typography variant="body1" fontWeight="medium">
+              {purchaseLedger
+                ? purchaseLedger.ledgerItems.reduce((sum, item) => sum + item.quantity, 0).toLocaleString()
+                : inspectionItems.reduce((sum, item) => sum + item.receivedQuantity, 0).toLocaleString()
+              }개
             </Typography>
           </Grid>
         </Grid>
       </Paper>
 
       {/* 검수 품목 */}
-      <TableContainer component={Paper} sx={{ mb: 3 }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ width: '12%' }}>카테고리</TableCell>
-              <TableCell sx={{ width: '28%' }}>상품명</TableCell>
-              <TableCell sx={{ width: '15%' }}>규격</TableCell>
-              <TableCell align="right" sx={{ width: '13%' }}>주문수량</TableCell>
-              <TableCell align="right" sx={{ width: '13%' }}>입고수량</TableCell>
-              <TableCell align="right" sx={{ width: '19%' }}>매입단가(원)</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {inspectionItems.map((item) => (
-              <TableRow key={item.productId}>
-                <TableCell>
+      <Paper sx={{ minHeight: 400, maxHeight: 600, width: '100%', mb: 3 }}>
+        <DataGrid
+          autoHeight
+          rows={inspectionItems}
+          columns={[
+            {
+              field: 'category',
+              headerName: '카테고리',
+              flex: 0.12,
+              align: 'center',
+              headerAlign: 'center',
+              renderCell: (params) => (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                   <Chip
-                    label={item.category || '미분류'}
+                    label={params.value || '미분류'}
                     size="small"
                     variant="outlined"
                   />
-                </TableCell>
-                <TableCell>{item.productName}</TableCell>
-                <TableCell>{item.specification || '-'}</TableCell>
-                <TableCell align="right">{item.orderedQuantity.toLocaleString()}</TableCell>
-                <TableCell align="right">
+                </Box>
+              )
+            },
+            {
+              field: 'productName',
+              headerName: '상품명',
+              flex: 0.28,
+              renderCell: (params) => (
+                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {params.value}
+                  </Typography>
+                </Box>
+              )
+            },
+            {
+              field: 'specification',
+              headerName: '규격',
+              flex: 0.15,
+              renderCell: (params) => (
+                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {params.value || '-'}
+                  </Typography>
+                </Box>
+              )
+            },
+            {
+              field: 'orderedQuantity',
+              headerName: '주문수량',
+              flex: 0.15,
+              align: 'right',
+              headerAlign: 'right',
+              renderCell: (params) => (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {params.value.toLocaleString()}
+                  </Typography>
+                </Box>
+              )
+            },
+            {
+              field: 'receivedQuantity',
+              headerName: '입고수량',
+              flex: 0.15,
+              align: 'right',
+              headerAlign: 'right',
+              renderCell: (params: GridRenderCellParams) => (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%', width: '100%' }}>
                   {purchaseOrder?.status === 'completed' && !isEditMode ? (
-                    <Box sx={{ textAlign: 'right' }}>{item.receivedQuantity.toLocaleString()}</Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {params.value.toLocaleString()}
+                    </Typography>
                   ) : (
                     <TextField
-                      type="number"
+                      type="text"
                       size="small"
-                      value={item.receivedQuantity}
-                      onChange={(e) => handleReceivedQuantityChange(item.productId, e.target.value)}
-                      sx={{ width: 100 }}
+                      value={params.value.toLocaleString()}
+                      onChange={(e) => handleReceivedQuantityChange(params.row.productId, e.target.value)}
+                      sx={{ width: '100px' }}
+                      onClick={(e) => e.stopPropagation()}
                     />
                   )}
-                </TableCell>
-                <TableCell align="right">
+                </Box>
+              )
+            },
+            {
+              field: 'orderedUnitPrice',
+              headerName: '주문가격',
+              flex: 0.12,
+              align: 'right',
+              headerAlign: 'right',
+              renderCell: (params) => (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {params.value.toLocaleString()}
+                  </Typography>
+                </Box>
+              )
+            },
+            {
+              field: 'inboundUnitPrice',
+              headerName: '입고가격',
+              flex: 0.12,
+              align: 'right',
+              headerAlign: 'right',
+              renderCell: (params: GridRenderCellParams) => (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%', width: '100%' }}>
                   {purchaseOrder?.status === 'completed' && !isEditMode ? (
-                    <Box sx={{ textAlign: 'right' }}>{item.orderedUnitPrice.toLocaleString()}</Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {(params.value || 0).toLocaleString()}
+                    </Typography>
                   ) : (
                     <TextField
-                      type="number"
+                      type="text"
                       size="small"
-                      value={item.orderedUnitPrice}
-                      onChange={(e) => handleUnitPriceChange(item.productId, e.target.value)}
-                      sx={{ width: 120 }}
-                      error={item.orderedUnitPrice <= 0}
+                      value={(params.value || 0).toLocaleString()}
+                      onChange={(e) => handleInboundPriceChange(params.row.productId, e.target.value)}
+                      sx={{ width: '100px' }}
+                      error={(params.value || 0) <= 0}
+                      onClick={(e) => e.stopPropagation()}
                     />
                   )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                </Box>
+              )
+            },
+            {
+              field: 'subtotal',
+              headerName: '소계',
+              flex: 0.13,
+              align: 'right',
+              headerAlign: 'right',
+              renderCell: (params) => {
+                const subtotal = params.row.receivedQuantity * (params.row.inboundUnitPrice || 0);
+                return (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                    <Typography variant="body2" color="primary.main" fontWeight="medium">
+                      {subtotal.toLocaleString()}
+                    </Typography>
+                  </Box>
+                );
+              }
+            }
+          ]}
+          getRowId={(row) => row.productId}
+          disableRowSelectionOnClick
+          disableColumnMenu
+          pageSizeOptions={[10, 20, 30]}
+          initialState={{
+            pagination: { paginationModel: { pageSize: 10 } }
+          }}
+          sx={{
+            '& .MuiDataGrid-cell:focus': {
+              outline: 'none',
+            },
+            '& .MuiDataGrid-cell:focus-within': {
+              outline: 'none',
+            },
+          }}
+        />
+      </Paper>
 
       {/* 액션 버튼 */}
       {purchaseOrder?.status !== 'completed' || isEditMode ? (
-        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'space-between', mb: 3 }}>
+        <Box sx={{
+          display: 'flex',
+          gap: 2,
+          justifyContent: 'space-between',
+          mb: 3,
+          p: 2,
+          bgcolor: 'background.paper',
+          borderRadius: 1,
+          boxShadow: 1
+        }}>
           <Button
             variant="outlined"
             startIcon={<AddIcon />}
-            onClick={() => {
-              const currentPath = location.pathname;
-              const params = new URLSearchParams({
-                mode: 'select',
-                returnTo: currentPath,
-                ...(purchaseOrder?.supplierId && { supplierId: purchaseOrder.supplierId })
-              });
-              navigate(`/products?${params.toString()}`);
-            }}
+            onClick={() => setQuickAddDialogOpen(true)}
           >
             상품 추가
           </Button>
@@ -499,7 +697,16 @@ const DailyOrderInboundInspectionPage = () => {
           </Box>
         </Box>
       ) : (
-        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', mb: 3 }}>
+        <Box sx={{
+          display: 'flex',
+          gap: 2,
+          justifyContent: 'flex-end',
+          mb: 3,
+          p: 2,
+          bgcolor: 'background.paper',
+          borderRadius: 1,
+          boxShadow: 1
+        }}>
           <Button
             variant="contained"
             startIcon={<EditIcon />}
@@ -525,6 +732,16 @@ const DailyOrderInboundInspectionPage = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* 빠른 상품 추가 다이얼로그 */}
+      <QuickProductAddDialog
+        open={quickAddDialogOpen}
+        onClose={() => setQuickAddDialogOpen(false)}
+        onSelect={handleQuickAddProduct}
+        initialSearchText={purchaseOrder?.supplierInfo.businessName || ''}
+        showPurchasePrice={true}
+        mode="inbound"
+      />
     </Container>
   );
 };

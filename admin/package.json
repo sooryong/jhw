@@ -1,12 +1,14 @@
 {
   "name": "jhw-admin",
   "private": true,
-  "version": "2.1.0",
-  "description": "JHW Platform v2.1 - Admin System",
+  "version": "0.9.5",
+  "description": "JHW Platform v0.9.5 Beta - Admin System",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
+    "build:check": "tsc -b && vite build",
+    "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -52,6 +52,7 @@ export class SettingsService {
 
       return null;
     } catch (error) {
+      // Error handled silently
       console.error('Error fetching settings:', error);
       throw new Error('설정 정보를 불러올 수 없습니다.');
     }
@@ -82,7 +83,8 @@ export class SettingsService {
         { code: '1', name: '직원' },
         { code: '2', name: '고객사' }
       ];
-    } catch {
+    } catch (error) {
+      // Error handled silently
       return [
         { code: '0', name: '관리자' },
         { code: '1', name: '직원' },
@@ -128,7 +130,8 @@ export class SettingsService {
 
       // 설정이 없을 경우 기본값 반환
       return ['도매 고객', '중도매 고객', '대형 고객', '소매 고객'];
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 에러 시에도 기본값 반환
       return ['도매 고객', '중도매 고객', '대형 고객', '소매 고객'];
     }
@@ -150,6 +153,7 @@ export class SettingsService {
 
       return [];
     } catch (error) {
+      // Error handled silently
       console.error('Error loading product categories:', error);
       return [];
     }

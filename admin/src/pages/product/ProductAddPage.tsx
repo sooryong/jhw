@@ -89,7 +89,8 @@ const ProductAddPage: React.FC = () => {
           productCode: nextCode,
           salePrices: createDefaultSalePrices(0, types)
         }));
-      } catch {
+      } catch (error) {
+      // Error handled silently
         // 오류 처리: 데이터 로드 실패
       }
     };
@@ -172,7 +173,8 @@ const ProductAddPage: React.FC = () => {
       });
       setErrors({});
       setSubmitError(null);
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 코드 로드 실패 시 undefined로 설정
       setFormData({
         productCode: undefined,
@@ -207,7 +209,7 @@ const ProductAddPage: React.FC = () => {
     setSubmitError(null);
 
     try {
-      const productId = await productService.createProduct(formData);
+      await productService.createProduct(formData);
 
       // 성공 시 폼 초기화
       resetForm();
@@ -219,6 +221,7 @@ const ProductAddPage: React.FC = () => {
         severity: 'success',
       });
     } catch (error) {
+      // Error handled silently
       // 오류 처리: 상품 등록 실패
       const errorMessage = error instanceof Error ? error.message : '상품 등록 중 오류가 발생했습니다.';
       setSnackbar({

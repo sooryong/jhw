@@ -101,9 +101,10 @@ class OrderAggregationService {
             ...docSnap.data()
           } as Product);
         } else {
-          console.warn(`Product not found: ${productId}`);
+          // Error handled silently
         }
       } catch (error) {
+        // Error handled silently
         console.error(`Error fetching product ${productId}:`, error);
       }
     }
@@ -131,9 +132,10 @@ class OrderAggregationService {
           const supplier = snapshot.docs[0].data() as Company;
           suppliers.push(supplier);
         } else {
-          console.warn(`Supplier not found: ${supplierId}`);
+          // Error handled silently
         }
       } catch (error) {
+        // Error handled silently
         console.error(`Error fetching supplier ${supplierId}:`, error);
       }
     }
@@ -262,13 +264,9 @@ class OrderAggregationService {
         if (!supplierAgg) {
           // supplierMap의 키는 하이픈 포함 사업자번호
           const supplier = supplierMap.get(supplierId);
-          const smsRecipients = [];
-          if (supplier?.smsRecipient?.person1) {
-            smsRecipients.push(supplier.smsRecipient.person1);
-          }
-          if (supplier?.smsRecipient?.person2) {
-            smsRecipients.push(supplier.smsRecipient.person2);
-          }
+          // smsRecipients는 userId 기반으로 조회해야 하므로 여기서는 빈 배열로 초기화
+          // SMS 발송 시 userService를 통해 primaryUserId/secondaryUserId로 사용자 조회
+          const smsRecipients: unknown[] = [];
 
           supplierAgg = {
             supplierId,

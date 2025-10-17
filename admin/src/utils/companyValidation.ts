@@ -7,13 +7,11 @@
 
 import {
   normalizeNumber,
-  normalizeBusinessNumber,
   isValidBusinessNumber,
   isValidMobile,
   isValidPhone,
 } from './numberUtils';
-import type { CustomerFormData, SupplierFormData, CustomerSMSRecipients } from '../types/company';
-import type { NormalizedMobile } from '../types/phoneNumber';
+import type { CustomerFormData, SupplierFormData } from '../types/company';
 
 /**
  * 검증 에러 타입
@@ -83,40 +81,59 @@ export const validateBaseCompanyInfo = (
 };
 
 /**
- * SMS 수신자 검증 (고객사/공급사 공통)
+ * 담당자 검증 (고객사/공급사 공통)
+ *
+ * @param primaryContact 주 담당자 정보
+ * @param secondaryContact 부 담당자 정보 (선택)
+ * @param requireUserId 고객사는 true (userId 필수), 공급사는 false (userId 불필요)
  */
-export const validateSMSRecipients = (
-  smsRecipient: {
-    person1: { name: string; mobile: string };
-    person2?: { name: string; mobile: string };
-  }
+export const validateContacts = (
+  primaryContact: { userId?: string; name: string; mobile: string },
+  secondaryContact?: { userId?: string; name: string; mobile: string },
+  requireUserId: boolean = false
 ): ValidationErrors => {
   const errors: ValidationErrors = {};
 
-  // person1 검증 (필수)
-  if (!smsRecipient.person1.name) {
-    errors.smsRecipient_person1_name = '수신자1 이름은 필수입니다.';
+  // primaryContact 검증 (필수)
+  if (requireUserId && !primaryContact.userId) {
+    errors.primaryContact_mobile = '담당자1을 검색하여 선택해주세요.';
   }
-  if (!smsRecipient.person1.mobile) {
-    errors.smsRecipient_person1_mobile = '수신자1 휴대폰은 필수입니다.';
+
+  if (!primaryContact.name) {
+    errors.primaryContact_name = '담당자1 이름은 필수입니다.';
+  }
+  if (!primaryContact.mobile) {
+    errors.primaryContact_mobile = '담당자1 휴대폰은 필수입니다.';
   } else {
-    const normalized = normalizeNumber(smsRecipient.person1.mobile);
+    const normalized = normalizeNumber(primaryContact.mobile);
     if (!isValidMobile(normalized)) {
-      errors.smsRecipient_person1_mobile = '올바른 휴대폰 형식이 아닙니다. (010-XXXX-XXXX)';
+      errors.primaryContact_mobile = '올바른 휴대폰 형식이 아닙니다. (010-XXXX-XXXX)';
     }
   }
 
-  // person2 검증 (선택이지만, 입력했다면 검증)
-  if (smsRecipient.person2?.name && !smsRecipient.person2?.mobile) {
-    errors.smsRecipient_person2_mobile = '휴대폰 번호를 입력해주세요.';
+  // secondaryContact 검증 (선택이지만, 입력했다면 검증)
+  if (secondaryContact?.name && !secondaryContact?.mobile) {
+    errors.secondaryContact_mobile = '휴대폰 번호를 입력해주세요.';
   }
-  if (smsRecipient.person2?.mobile && !smsRecipient.person2?.name) {
-    errors.smsRecipient_person2_name = '이름을 입력해주세요.';
+  if (secondaryContact?.mobile && !secondaryContact?.name) {
+    errors.secondaryContact_name = '이름을 입력해주세요.';
   }
-  if (smsRecipient.person2?.mobile) {
-    const normalized = normalizeNumber(smsRecipient.person2.mobile);
+  if (secondaryContact?.mobile) {
+    // 고객사인 경우 userId 필수
+    if (requireUserId && !secondaryContact.userId) {
+      errors.secondaryContact_mobile = '담당자2를 검색하여 선택해주세요.';
+    }
+
+    const normalized = normalizeNumber(secondaryContact.mobile);
     if (!isValidMobile(normalized)) {
-      errors.smsRecipient_person2_mobile = '올바른 휴대폰 형식이 아닙니다. (010-XXXX-XXXX)';
+      errors.secondaryContact_mobile = '올바른 휴대폰 형식이 아닙니다. (010-XXXX-XXXX)';
+    }
+
+    // 주 담당자와 부 담당자가 같은지 검증
+    const primaryNormalized = normalizeNumber(primaryContact.mobile);
+    const secondaryNormalized = normalizeNumber(secondaryContact.mobile);
+    if (primaryNormalized === secondaryNormalized) {
+      errors.secondaryContact_mobile = '담당자1과 담당자2는 다른 사람이어야 합니다.';
     }
   }
 
@@ -142,7 +159,7 @@ export const validateCustomerSpecificFields = (formData: CustomerFormData): Vali
 export const validateCustomerForm = (formData: CustomerFormData): ValidationErrors => {
   return {
     ...validateBaseCompanyInfo(formData),
-    ...validateSMSRecipients(formData.smsRecipient),
+    ...validateContacts(formData.primaryContact, formData.secondaryContact, true), // userId 필수
     ...validateCustomerSpecificFields(formData),
   };
 };
@@ -153,69 +170,10 @@ export const validateCustomerForm = (formData: CustomerFormData): ValidationErro
 export const validateSupplierForm = (formData: SupplierFormData): ValidationErrors => {
   return {
     ...validateBaseCompanyInfo(formData),
-    ...validateSMSRecipients(formData.smsRecipient),
+    ...validateContacts(formData.primaryContact, formData.secondaryContact, false), // userId 불필요
   };
 };
 
-/**
- * SMS 수신자 데이터 정규화 및 변환
- */
-export const normalizeSMSRecipients = (
-  smsRecipient: {
-    person1: { name: string; mobile: string };
-    person2?: { name: string; mobile: string };
-  }
-): CustomerSMSRecipients => {
-  const normalized: CustomerSMSRecipients = {
-    person1: {
-      name: smsRecipient.person1.name,
-      mobile: normalizeNumber(smsRecipient.person1.mobile) as NormalizedMobile,
-    },
-  };
-
-  if (smsRecipient.person2?.name?.trim() && smsRecipient.person2?.mobile?.trim()) {
-    normalized.person2 = {
-      name: smsRecipient.person2.name,
-      mobile: normalizeNumber(smsRecipient.person2.mobile) as NormalizedMobile,
-    };
-  }
-
-  return normalized;
-};
-
-/**
- * 고객사 폼 데이터를 저장용 데이터로 변환 (정규화)
- */
-export const normalizeCustomerFormData = (
-  formData: CustomerFormData
-): Omit<CustomerFormData, 'smsRecipient'> & { smsRecipient: CustomerSMSRecipients } => {
-  return {
-    ...formData,
-    businessNumber: normalizeBusinessNumber(formData.businessNumber), // 하이픈 포함 형식
-    presidentMobile: normalizeNumber(formData.presidentMobile || ''),
-    businessPhone: normalizeNumber(formData.businessPhone || ''),
-    smsRecipient: normalizeSMSRecipients(formData.smsRecipient),
-    discountRate: Number(formData.discountRate) || 0,
-    isActive: true,
-    currentBalance: formData.currentBalance || 0,
-  };
-};
-
-/**
- * 공급사 폼 데이터를 저장용 데이터로 변환 (정규화)
- */
-export const normalizeSupplierFormData = (
-  formData: SupplierFormData
-): Omit<SupplierFormData, 'smsRecipient'> & { smsRecipient: CustomerSMSRecipients } => {
-  return {
-    ...formData,
-    businessNumber: normalizeBusinessNumber(formData.businessNumber), // 하이픈 포함 형식
-    presidentMobile: normalizeNumber(formData.presidentMobile || ''),
-    businessPhone: normalizeNumber(formData.businessPhone || ''),
-    smsRecipient: normalizeSMSRecipients(formData.smsRecipient),
-    isActive: true,
-  };
-};
 
 /**
  * 검증 에러가 있는지 확인

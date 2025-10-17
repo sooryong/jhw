@@ -131,6 +131,7 @@ export const createSaleOrder = async (orderData: CreateSaleOrderData): Promise<s
 
     return saleOrderNumber;
   } catch (error) {
+      // Error handled silently
     console.error('매출주문 생성 실패:', error);
     throw new Error('매출주문 생성에 실패했습니다.');
   }
@@ -157,6 +158,7 @@ export const getSaleOrder = async (saleOrderNumber: string): Promise<SaleOrder |
       id: doc.id,
     } as unknown as SaleOrder;
   } catch (error) {
+      // Error handled silently
     console.error('매출주문 조회 실패:', error);
     throw new Error('매출주문 조회에 실패했습니다.');
   }
@@ -190,6 +192,7 @@ export const getSaleOrderById = async (customerId: string, saleOrderNumber: stri
       id: orderDoc.id,
     } as unknown as SaleOrder;
   } catch (error) {
+      // Error handled silently
     console.error('주문 상세 조회 실패:', error);
     throw error;
   }
@@ -264,6 +267,7 @@ export const getSaleOrderHistory = async (
       currentPage: page,
     };
   } catch (error) {
+      // Error handled silently
     console.error('매출주문 이력 조회 실패:', error);
     throw new Error('매출주문 이력 조회에 실패했습니다.');
   }
@@ -296,6 +300,7 @@ export const deleteSaleOrder = async (saleOrderNumber: string): Promise<void> =>
       await deleteDoc(doc(db, COLLECTION_NAME, snapshot.docs[0].id));
     }
   } catch (error) {
+      // Error handled silently
     console.error('매출주문 삭제 실패:', error);
     throw error;
   }
@@ -344,6 +349,7 @@ export const updateSaleOrderStatus = async (
 
     await updateDoc(docRef, updateData);
   } catch (error) {
+      // Error handled silently
     console.error('매출주문 상태 업데이트 실패:', error);
     throw error;
   }
@@ -392,6 +398,7 @@ export const getSaleOrderStats = async (customerId?: string) => {
 
     return stats;
   } catch (error) {
+      // Error handled silently
     console.error('매출주문 통계 조회 실패:', error);
     throw new Error('매출주문 통계 조회에 실패했습니다.');
   }
@@ -434,6 +441,7 @@ export const getOrderCountByCustomer = async (customerId: string): Promise<numbe
     const snapshot = await getDocs(q);
     return snapshot.size;
   } catch (error) {
+      // Error handled silently
     console.error('주문 수량 조회 실패:', error);
     return 0;
   }
@@ -454,6 +462,7 @@ export const getOrderCountsByCustomers = async (customerIds: string[]): Promise<
 
     return orderCounts;
   } catch (error) {
+      // Error handled silently
     console.error('주문 수량 일괄 조회 실패:', error);
     return {};
   }
@@ -513,6 +522,7 @@ export const getOrderStatsByCustomer = async (customerId: string): Promise<Order
       totalAmount,
     };
   } catch (error) {
+      // Error handled silently
     console.error('주문 통계 조회 실패:', error);
     return {
       orderCount: 0,
@@ -539,6 +549,7 @@ export const getOrderStatsByCustomers = async (
 
     return orderStats;
   } catch (error) {
+      // Error handled silently
     console.error('주문 통계 일괄 조회 실패:', error);
     return {};
   }
@@ -582,6 +593,7 @@ export const cancelSaleOrder = async (saleOrderNumber: string, customerId: strin
       });
     }
   } catch (error) {
+      // Error handled silently
     console.error('매출주문 취소 실패:', error);
     throw error;
   }

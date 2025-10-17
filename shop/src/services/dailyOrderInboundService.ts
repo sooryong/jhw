@@ -50,9 +50,51 @@ export const getConfirmedPurchaseOrders = async (): Promise<PurchaseOrder[]> => 
 
     return orders;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching confirmed purchase orders:', error);
     throw new Error('입고 대기 매입주문 조회 중 오류가 발생했습니다.');
   }
+};
+
+/**
+ * 매입 원장 번호 생성 (PL-YYMMDD-001)
+ */
+const generatePurchaseLedgerNumber = async (): Promise<string> => {
+  const today = new Date();
+  const year = today.getFullYear().toString().slice(-2); // YY
+  const month = (today.getMonth() + 1).toString().padStart(2, '0'); // MM
+  const day = today.getDate().toString().padStart(2, '0'); // DD
+  const currentDate = `${year}${month}${day}`; // YYMMDD
+
+  const counterRef = doc(db, 'lastCounters', 'purchaseLedger');
+
+  const newNumber = await runTransaction(db, async (transaction) => {
+    const counterDoc = await transaction.get(counterRef);
+
+    let lastNumber = 0;
+    let storedDate = currentDate;
+
+    if (counterDoc.exists()) {
+      const data = counterDoc.data();
+      lastNumber = data.lastNumber || 0;
+      storedDate = data.currentDate || currentDate;
+    }
+
+    // 날짜가 바뀌면 카운터 리셋
+    const nextNumber = (storedDate === currentDate) ? lastNumber + 1 : 1;
+
+    // 카운터 업데이트
+    transaction.set(counterRef, {
+      lastNumber: nextNumber,
+      currentDate: currentDate
+    }, { merge: true });
+
+    return nextNumber;
+  });
+
+  // 3자리 패딩 (overflow 시 4자리 이상 허용)
+  const paddedNumber = newNumber.toString().padStart(3, '0');
+  return `PL-${currentDate}-${paddedNumber}`;
 };
 
 /**
@@ -82,43 +124,43 @@ export interface InboundCompletionData {
 
 export const completeInbound = async (
   data: InboundCompletionData
-): Promise<{ purchaseLedgerId: string }> => {
+): Promise<{ purchaseLedgerNumber: string }> => {
+  // 매입주문 조회 (트랜잭션 밖에서)
+  const purchaseOrder = await purchaseOrderService.getPurchaseOrderById(data.purchaseOrderNumber);
+
+  if (!purchaseOrder) {
+    throw new Error('매입주문을 찾을 수 없습니다.');
+  }
+
   try {
-    // 1. 먼저 매입주문 조회 (트랜잭션 밖에서)
-    const purchaseOrder = await purchaseOrderService.getPurchaseOrderById(data.purchaseOrderNumber);
+    // 1. 매입 원장 번호 생성 (트랜잭션 밖에서)
+    const purchaseLedgerNumber = await generatePurchaseLedgerNumber();
 
-    if (!purchaseOrder) {
-      throw new Error('매입주문을 찾을 수 없습니다.');
-    }
-
+    // 2. 트랜잭션으로 원장 생성
     const result = await runTransaction(db, async (transaction) => {
-      // purchaseOrderNumber 필드로 문서 찾기
-      const q = query(
+      // 2-1. Firestore 자동 생성 ID로 문서 참조 생성
+      const ledgerRef = doc(collection(db, 'purchaseLedgers'));
+
+      // 2-2. 매입주문 참조 가져오기
+      const purchaseOrderQuery = query(
         collection(db, 'purchaseOrders'),
         where('purchaseOrderNumber', '==', data.purchaseOrderNumber)
       );
-      const snapshot = await getDocs(q);
+      const purchaseOrderSnapshot = await getDocs(purchaseOrderQuery);
 
-      if (snapshot.empty) {
+      if (purchaseOrderSnapshot.empty) {
         throw new Error('매입주문을 찾을 수 없습니다.');
       }
 
-      const purchaseOrderRef = snapshot.docs[0].ref;
+      const purchaseOrderRef = purchaseOrderSnapshot.docs[0].ref;
 
-      // 2. 매입 원장 ID 생성
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-      const ledgerId = `PL-${dateStr}-${String(now.getTime()).slice(-5)}`;
-
-      // 3. 입고 품목별로 상품 정보 조회하여 원장 품목 생성
+      // 2-3. 입고 품목별로 상품 정보 조회하여 원장 품목 생성
       const ledgerItemsPromises = data.inspectionItems.map(async (item) => {
-        // 상품 정보 조회
         const productRef = doc(db, 'products', item.productId);
         const productDoc = await transaction.get(productRef);
-
         const product = productDoc.exists() ? (productDoc.data() as Product) : null;
 
-        const ledgerItem: PurchaseLedgerItem = {
+        return {
           productId: item.productId,
           productCode: product?.productCode || 'UNKNOWN',
           productName: item.productName,
@@ -127,19 +169,15 @@ export const completeInbound = async (
           quantity: item.receivedQuantity,
           unitPrice: item.orderedUnitPrice,
           lineTotal: item.receivedQuantity * item.orderedUnitPrice
-        };
-
-        return ledgerItem;
+        } as PurchaseLedgerItem;
       });
 
       const ledgerItems = await Promise.all(ledgerItemsPromises);
-
-      // 4. 총액 계산
       const totalAmount = ledgerItems.reduce((sum, item) => sum + item.lineTotal, 0);
 
-      // 5. 매입 원장 생성
+      // 2-4. 매입 원장 데이터 생성
       const purchaseLedger: Omit<PurchaseLedger, 'id'> = {
-        purchaseLedgerId: ledgerId,
+        purchaseLedgerNumber,
         purchaseOrderNumber: data.purchaseOrderNumber,
         supplierId: purchaseOrder.supplierId,
         supplierInfo: {
@@ -155,22 +193,23 @@ export const completeInbound = async (
         ...(data.notes && { notes: data.notes })
       };
 
-      const purchaseLedgerRef = doc(db, 'purchaseLedgers', ledgerId);
-      transaction.set(purchaseLedgerRef, purchaseLedger);
+      // 2-5. 매입 원장 저장
+      transaction.set(ledgerRef, purchaseLedger);
 
-      // 6. 매입주문 상태만 업데이트 (내용 변경 없음)
+      // 2-6. 매입주문 상태 업데이트
       transaction.update(purchaseOrderRef, {
         status: 'completed',
         completedAt: Timestamp.now(),
-        purchaseLedgerId: ledgerId,
+        purchaseLedgerNumber,
         updatedAt: Timestamp.now()
       });
 
-      return { purchaseLedgerId: ledgerId };
+      return { purchaseLedgerNumber };
     });
 
     return result;
-  } catch (error) {
+
+  } catch (error: unknown) {
     console.error('Error completing inbound:', error);
     throw new Error('입고 완료 처리 중 오류가 발생했습니다.');
   }
@@ -189,6 +228,7 @@ export const getPurchaseOrderById = async (orderId: string): Promise<PurchaseOrd
 
     return docSnap.docs[0].data() as PurchaseOrder;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase order:', error);
     throw new Error('매입주문 조회 중 오류가 발생했습니다.');
   }

@@ -297,7 +297,7 @@ const DailyOrderInboundPrintView = () => {
                 </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: 1, borderBottom: 1, borderColor: 'divider', p: 1, minHeight: 50 }}>
                   <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                    발주일시:
+                    생성일시:
                   </Typography>
                   <Typography variant="body2" sx={{ fontSize: '0.875rem', fontWeight: 'bold', textAlign: 'right' }}>
                     {format(purchaseOrder.placedAt.toDate(), 'yyyy-MM-dd HH:mm')}

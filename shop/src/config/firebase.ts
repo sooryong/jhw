@@ -36,7 +36,8 @@ if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true'
   try {
     connectFunctionsEmulator(functions, 'localhost', 5001);
     // Firebase Functions 에뮬레이터 연결 완료
-  } catch {
+  } catch (error) {
+      // Error handled silently
     // 경고: Firebase Functions 에뮬레이터 연결 실패
   }
 }

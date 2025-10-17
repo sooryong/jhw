@@ -1,13 +1,14 @@
 /**
  * 파일 경로: /src/services/customerLinkService.ts
  * 작성 날짜: 2025-09-28
- * 주요 내용: SMS 수신자와 고객사 연결 관리 서비스
- * 관련 데이터: customers.smsRecipient 연결 관리
+ * 업데이트: 2025-10-14 (사용자 기반 시스템으로 전환)
+ * 주요 내용: 고객사 사용자와 고객사 연결 관리 서비스
+ * 관련 데이터: users 컬렉션 (고객사 사용자)
  */
 
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import type { Customer } from '../types/company'; // Updated: 2025-09-28
+import type { JWSUser } from '../types/user';
 import { normalizeNumber, compareNumbers } from '../utils/numberUtils';
 
 // SMS 수신자 연결 정보
@@ -28,57 +29,62 @@ export interface SMSRecipientSearchResult {
 }
 
 export class CustomerLinkService {
-  private collectionName = 'customers';
-
   /**
-   * 휴대폰번호로 연결된 고객사 목록 조회
+   * 휴대폰번호로 사용자 정보 및 연결된 고객사 목록 조회
+   * (마이그레이션 후: users 컬렉션에서 조회)
    */
   async findCustomersBySMSRecipient(mobile: string): Promise<SMSRecipientSearchResult | null> {
     try {
       // 휴대폰번호 정규화 (숫자만 추출)
       const normalizedMobile = normalizeNumber(mobile);
 
-      const customersCollection = collection(db, this.collectionName);
-      const snapshot = await getDocs(customersCollection);
+      // users 컬렉션에서 해당 휴대폰 번호의 customer 역할 사용자 조회
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('role', '==', 'customer'),
+        where('mobile', '==', normalizedMobile)
+      );
 
+      const usersSnapshot = await getDocs(usersQuery);
+
+      if (usersSnapshot.empty) {
+        return null;
+      }
+
+      // 첫 번째 사용자 정보 가져오기 (같은 번호는 하나의 사용자만 있어야 함)
+      const userDoc = usersSnapshot.docs[0];
+      const userData = userDoc.data() as JWSUser;
+
+      if (!userData.smsRecipientInfo || !userData.linkedCustomers) {
+        return null;
+      }
+
+      // 연결된 고객사 정보 조회
       const linkedCustomers: SMSRecipientLink[] = [];
-      let recipientName = '';
 
-      snapshot.forEach((doc) => {
-        const customer = doc.data() as Customer;
+      // 각 고객사 정보를 customers 컬렉션에서 조회
+      for (const businessNumber of userData.linkedCustomers) {
+        try {
+          const customersCollection = collection(db, 'customers');
+          const customersSnapshot = await getDocs(customersCollection);
 
-        // person1 확인 (번호 비교 시 정규화)
-        if (customer.smsRecipient?.person1?.mobile &&
-            compareNumbers(customer.smsRecipient.person1.mobile, normalizedMobile)) {
-          linkedCustomers.push({
-            businessNumber: customer.businessNumber,
-            businessName: customer.businessName,
-            recipientRole: 'person1',
-            recipientName: customer.smsRecipient.person1.name,
-            customerType: customer.customerType,
+          customersSnapshot.forEach((doc) => {
+            const customer = doc.data();
+            if (compareNumbers(customer.businessNumber, businessNumber)) {
+              linkedCustomers.push({
+                businessNumber: customer.businessNumber,
+                businessName: customer.businessName,
+                recipientRole: userData.smsRecipientInfo!.recipientRole || 'person1',
+                recipientName: userData.name,
+                customerType: customer.customerType || '일반고객',
+              });
+            }
           });
-
-          if (!recipientName) {
-            recipientName = customer.smsRecipient.person1.name;
-          }
+        } catch (error) {
+      // Error handled silently
+          console.error(`Failed to fetch customer ${businessNumber}:`, error);
         }
-
-        // person2 확인 (있는 경우, 번호 비교 시 정규화)
-        if (customer.smsRecipient?.person2?.mobile &&
-            compareNumbers(customer.smsRecipient.person2.mobile, normalizedMobile)) {
-          linkedCustomers.push({
-            businessNumber: customer.businessNumber,
-            businessName: customer.businessName,
-            recipientRole: 'person2',
-            recipientName: customer.smsRecipient.person2.name,
-            customerType: customer.customerType,
-          });
-
-          if (!recipientName) {
-            recipientName = customer.smsRecipient.person2.name;
-          }
-        }
-      });
+      }
 
       if (linkedCustomers.length === 0) {
         return null;
@@ -86,13 +92,14 @@ export class CustomerLinkService {
 
       return {
         mobile: normalizedMobile,
-        name: recipientName,
+        name: userData.name,
         linkedCustomers,
         hasMultipleCustomers: linkedCustomers.length > 1,
       };
 
     } catch (error) {
-      console.error('SMS 수신자 기반 고객사 검색 실패:', error);
+      // Error handled silently
+      console.error('사용자 기반 고객사 검색 실패:', error);
       throw new Error('고객사 연결 정보를 조회할 수 없습니다.');
     }
   }
@@ -109,6 +116,7 @@ export class CustomerLinkService {
         customer => compareNumbers(customer.businessNumber, businessNumber)
       );
     } catch (error) {
+      // Error handled silently
       console.error('고객사 접근 권한 확인 실패:', error);
       return false;
     }
@@ -124,6 +132,7 @@ export class CustomerLinkService {
 
       return result.linkedCustomers.filter(customer => customer.recipientRole === 'person1');
     } catch (error) {
+      // Error handled silently
       console.error('주 담당 고객사 조회 실패:', error);
       return [];
     }

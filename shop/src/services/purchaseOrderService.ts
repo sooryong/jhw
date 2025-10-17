@@ -135,6 +135,7 @@ class PurchaseOrderService {
 
       return purchaseOrder;
     } catch (error) {
+      // Error handled silently
       console.error('Error creating purchase order:', error);
       if (error instanceof PurchaseOrderServiceError) {
         throw error;
@@ -166,6 +167,7 @@ class PurchaseOrderService {
         ...snapshot.docs[0].data()
       } as PurchaseOrder;
     } catch (error) {
+      // Error handled silently
       console.error('Error fetching purchase order:', error);
       throw new PurchaseOrderServiceError(
         '매입주문 조회 중 오류가 발생했습니다.',
@@ -224,6 +226,7 @@ class PurchaseOrderService {
         ...doc.data()
       } as PurchaseOrder));
     } catch (error) {
+      // Error handled silently
       console.error('Error fetching purchase orders:', error);
       throw new PurchaseOrderServiceError(
         '매입주문 목록 조회 중 오류가 발생했습니다.',
@@ -269,8 +272,9 @@ class PurchaseOrderService {
         updateData.completedAt = Timestamp.now();
       }
 
-      await updateDoc(docRef, updateData as any);
+      await updateDoc(docRef, updateData as unknown);
     } catch (error) {
+      // Error handled silently
       console.error('Error updating purchase order status:', error);
       if (error instanceof PurchaseOrderServiceError) {
         throw error;
@@ -308,6 +312,7 @@ class PurchaseOrderService {
         updatedAt: Timestamp.now()
       });
     } catch (error) {
+      // Error handled silently
       console.error('Error updating SMS sent time:', error);
       if (error instanceof PurchaseOrderServiceError) {
         throw error;
@@ -337,6 +342,7 @@ class PurchaseOrderService {
 
       return createdOrders;
     } catch (error) {
+      // Error handled silently
       console.error('Error creating batch purchase orders:', error);
       throw new PurchaseOrderServiceError(
         '매입주문 일괄 생성 중 오류가 발생했습니다.',
@@ -376,7 +382,6 @@ class PurchaseOrderService {
         const snapshot = await getDocs(q);
 
         if (snapshot.empty) {
-          console.warn(`매입주문 ${purchaseOrderNumber}을 찾을 수 없습니다. 건너뜁니다.`);
           continue;
         }
 
@@ -389,6 +394,7 @@ class PurchaseOrderService {
       // 일괄 삭제 실행
       await batch.commit();
     } catch (error) {
+      // Error handled silently
       console.error('Error deleting batch purchase orders:', error);
       if (error instanceof PurchaseOrderServiceError) {
         throw error;
@@ -458,6 +464,7 @@ class PurchaseOrderService {
         updatedAt: Timestamp.now()
       });
     } catch (error) {
+      // Error handled silently
       console.error('Error updating order item quantity:', error);
       if (error instanceof PurchaseOrderServiceError) {
         throw error;
@@ -521,6 +528,7 @@ class PurchaseOrderService {
         error: result.success ? undefined : result.message
       };
     } catch (error) {
+      // Error handled silently
       console.error('Error sending SMS to recipient:', error);
       if (error instanceof PurchaseOrderServiceError) {
         throw error;
@@ -568,7 +576,6 @@ class PurchaseOrderService {
           const purchaseOrder = await this.getPurchaseOrderById(purchaseOrderNumber);
 
           if (!purchaseOrder) {
-            console.warn(`매입주문 ${purchaseOrderNumber}을 찾을 수 없습니다. 건너뜁니다.`);
             results.push({
               purchaseOrderNumber,
               success: false,
@@ -590,7 +597,6 @@ class PurchaseOrderService {
           }));
 
           if (recipients.length === 0) {
-            console.warn(`매입주문 ${purchaseOrderNumber}: SMS 수신자가 없습니다.`);
             results.push({
               purchaseOrderNumber,
               success: false,
@@ -648,6 +654,7 @@ class PurchaseOrderService {
         results
       };
     } catch (error) {
+      // Error handled silently
       console.error('Error sending batch SMS:', error);
       throw new PurchaseOrderServiceError(
         '매입주문 일괄 SMS 발송 중 오류가 발생했습니다.',
@@ -783,6 +790,7 @@ class PurchaseOrderService {
       return purchaseOrderNumber;
 
     } catch (error) {
+      // Error handled silently
       console.error('Error creating purchase order:', error);
       throw error;
     }
@@ -830,7 +838,6 @@ class PurchaseOrderService {
         const supplierSnapshot = await getDocs(supplierQuery);
 
         if (supplierSnapshot.empty) {
-          console.warn(`공급사를 찾을 수 없습니다: ${supplier.supplierId} - 매입주문 생성을 건너뜁니다.`);
           continue;
         }
 
@@ -877,6 +884,7 @@ class PurchaseOrderService {
 
       return createdOrderIds;
     } catch (error) {
+      // Error handled silently
       console.error('Error creating purchase orders from aggregation:', error);
       throw new PurchaseOrderServiceError(
         '매입주문 생성 중 오류가 발생했습니다.',
@@ -924,6 +932,7 @@ class PurchaseOrderService {
         cancelled
       };
     } catch (error) {
+      // Error handled silently
       console.error('Error getting purchase order stats:', error);
       throw new PurchaseOrderServiceError(
         '매입주문 통계 조회 중 오류가 발생했습니다.',

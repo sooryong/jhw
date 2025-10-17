@@ -19,13 +19,15 @@ import {
   MenuItem,
   Alert,
   CircularProgress,
-  InputAdornment
+  InputAdornment,
+  IconButton
 } from '@mui/material';
 import {
   Add as AddIcon,
   Search as SearchIcon,
   Inventory as ProductIcon,
-  ArrowBack as BackIcon
+  ArrowBack as BackIcon,
+  Edit as EditIcon
 } from '@mui/icons-material';
 import { DataGrid } from '@mui/x-data-grid';
 import type { GridColDef } from '@mui/x-data-grid';
@@ -34,7 +36,7 @@ import { supplierService } from '../../services/supplierService';
 import { settingsService } from '../../services/settingsService';
 import type { Product, ProductFilter } from '../../types/product';
 import type { Supplier } from '../../types/company';
-import { priceUtils, stockUtils } from '../../types/product';
+import { stockUtils } from '../../types/product';
 
 const ProductListPage: React.FC = () => {
   const navigate = useNavigate();
@@ -88,7 +90,8 @@ const ProductListPage: React.FC = () => {
       setProducts(productData);
       setTotalCount(countData);
 
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 오류 처리: 상품 목록 로드 실패
       setError('상품 목록을 불러올 수 없습니다.');
     } finally {
@@ -101,7 +104,8 @@ const ProductListPage: React.FC = () => {
     try {
       const supplierData = await supplierService.getSuppliers({ isActive: true });
       setSuppliers(supplierData);
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 오류 처리: 공급사 목록 로드 실패
     }
   }, []);
@@ -111,7 +115,8 @@ const ProductListPage: React.FC = () => {
     try {
       const categoryData = await settingsService.getProductCategories();
       setCategories(categoryData);
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 오류 처리: 카테고리 목록 로드 실패
     }
   }, []);
@@ -280,6 +285,26 @@ const ProductListPage: React.FC = () => {
           </Typography>
         </Box>
       )
+    },
+    {
+      field: 'actions',
+      headerName: '수정',
+      width: 60,
+      align: 'center',
+      headerAlign: 'center',
+      sortable: false,
+      renderCell: (params) => (
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/products/${params.row.productId}`);
+          }}
+          sx={{ color: 'primary.main' }}
+        >
+          <EditIcon fontSize="small" />
+        </IconButton>
+      ),
     }
   ];
 

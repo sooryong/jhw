@@ -129,6 +129,7 @@ const CartPanel: React.FC<CartPanelProps> = ({ products, customer }) => {
       }, 3000);
 
     } catch (error) {
+      // Error handled silently
       console.error('주문 생성 실패:', error);
       setOrderError(error instanceof Error ? error.message : '주문 처리에 실패했습니다.');
     } finally {

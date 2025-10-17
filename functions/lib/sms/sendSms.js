@@ -35,7 +35,7 @@ exports.sendSms = (0, https_1.onCall)({
             throw new https_1.HttpsError('invalid-argument', 'Both "to" and "text" are required');
         }
         // SOLAPI 메시지 서비스 초기화
-        const messageService = new solapi_1.SolapiMessageService(solapiApiKey.value(), solapiApiSecret.value());
+        const messageService = new solapi_1.SolapiMessageService(solapiApiKey.value().trim(), solapiApiSecret.value().trim());
         console.log('📤 SOLAPI 메시지 발송 시작:', {
             to: to.replace(/(\d{3})(\d{4})(\d{4})/, '$1-****-$3'), // 번호 마스킹
             textLength: text.length

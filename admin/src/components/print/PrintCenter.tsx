@@ -17,18 +17,24 @@ import {
   ListItemButton,
   ListItemText,
   Checkbox,
-  Paper
+  Paper,
+  IconButton
 } from '@mui/material';
 import {
   Print as PrintIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import type { DocumentType, DocumentRenderer, PrintDocument } from './types';
 import { InboundInspectionRenderer } from './renderers/InboundInspectionRenderer';
+import { OutboundInspectionRenderer } from './renderers/OutboundInspectionRenderer';
+import { SaleSlipRenderer } from './renderers/SaleSlipRenderer';
 
 // 렌더러 레지스트리
-const rendererRegistry = new Map<DocumentType, DocumentRenderer<any>>([
-  ['inbound-inspection', InboundInspectionRenderer]
+const rendererRegistry = new Map<DocumentType, DocumentRenderer<unknown>>([
+  ['inbound-inspection', InboundInspectionRenderer as DocumentRenderer<unknown>],
+  ['outbound-inspection', OutboundInspectionRenderer as DocumentRenderer<unknown>],
+  ['sale-slip', SaleSlipRenderer as DocumentRenderer<unknown>]
   // 향후 추가: ['outbound-shipment', OutboundShipmentRenderer],
   // 향후 추가: ['order-receipt', OrderReceiptRenderer],
 ]);
@@ -40,7 +46,7 @@ const PrintCenter = () => {
   const [error, setError] = useState<string | null>(null);
   const [documents, setDocuments] = useState<PrintDocument[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [renderer, setRenderer] = useState<DocumentRenderer<any> | null>(null);
+  const [renderer, setRenderer] = useState<DocumentRenderer<unknown> | null>(null);
 
   const handleClose = () => {
     window.close();
@@ -52,6 +58,14 @@ const PrintCenter = () => {
     const element = document.getElementById(docId);
     element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  // 브라우저 탭 제목 설정
+  useEffect(() => {
+    document.title = '프린트센터';
+    return () => {
+      document.title = 'JHW Platform Admin';
+    };
+  }, []);
 
   useEffect(() => {
     const type = searchParams.get('type') as DocumentType | null;
@@ -107,17 +121,17 @@ const PrintCenter = () => {
               id,
               title: currentRenderer.getTitle(data),
               summary: currentRenderer.getSummary(data),
-              data
+              data,
+              addedAt: new Date() // 추가된 시간 기록
             };
           });
 
           const newDocuments = await Promise.all(documentsPromises);
 
-          // 기존 문서 목록에 추가 (중복 제거)
+          // 기존 문서 목록에 추가 (중복 허용, 최신 문서가 아래로 정렬)
           setDocuments(prev => {
-            const existingIds = new Set(prev.map(doc => doc.id));
-            const uniqueNewDocs = newDocuments.filter(doc => !existingIds.has(doc.id));
-            return [...prev, ...uniqueNewDocs];
+            // 먼저 들어온 목록이 위에, 최신이 아래에 오도록 배치
+            return [...prev, ...newDocuments];
           });
         } catch (err) {
           console.error('Error loading new documents:', err);
@@ -132,7 +146,7 @@ const PrintCenter = () => {
     };
   }, [renderer]);
 
-  const loadDocuments = async (selectedRenderer: DocumentRenderer<any>, documentIds: string[]) => {
+  const loadDocuments = async (selectedRenderer: DocumentRenderer<unknown>, documentIds: string[]) => {
     setLoading(true);
     setError(null);
 
@@ -143,7 +157,8 @@ const PrintCenter = () => {
           id,
           title: selectedRenderer.getTitle(data),
           summary: selectedRenderer.getSummary(data),
-          data
+          data,
+          addedAt: new Date() // 추가된 시간 기록
         };
       });
 
@@ -158,11 +173,31 @@ const PrintCenter = () => {
   };
 
   const handlePrint = () => {
-    // 인쇄 시작 시 즉시 모든 문서 제거
-    setDocuments([]);
-
-    // 프린트 대화상자 열기
+    // 프린트 대화상자 열기 (문서 목록 유지)
     window.print();
+  };
+
+  const handleClearAll = () => {
+    // 모든 문서 목록 삭제
+    setDocuments([]);
+    setSelectedIndex(0);
+  };
+
+  const handleDeleteDocument = (index: number) => {
+    setDocuments(prev => {
+      const newDocuments = prev.filter((_, i) => i !== index);
+
+      // 선택된 인덱스 조정
+      if (newDocuments.length === 0) {
+        setSelectedIndex(0);
+      } else if (selectedIndex >= newDocuments.length) {
+        setSelectedIndex(newDocuments.length - 1);
+      } else if (selectedIndex > index) {
+        setSelectedIndex(selectedIndex - 1);
+      }
+
+      return newDocuments;
+    });
   };
 
   if (loading) {
@@ -230,7 +265,7 @@ const PrintCenter = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <PrintIcon sx={{ fontSize: 28, color: 'primary.main' }} />
             <Typography variant="h5">
-              JWS 프린트 센터
+              JHW 프린트 센터
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
@@ -238,8 +273,18 @@ const PrintCenter = () => {
               variant="contained"
               startIcon={<PrintIcon />}
               onClick={handlePrint}
+              disabled={documents.length === 0}
             >
               인쇄 시작
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={handleClearAll}
+              disabled={documents.length === 0}
+            >
+              목록 전체 삭제
             </Button>
             <Button
               variant="outlined"
@@ -277,24 +322,49 @@ const PrintCenter = () => {
         >
           <List>
             {documents.map((doc, index) => (
-              <Box key={doc.id}>
+              <Box key={`${doc.id}-${doc.addedAt.getTime()}`}>
                 <ListItem disablePadding>
                   <ListItemButton
                     selected={selectedIndex === index}
                     onClick={() => handleDocumentClick(index)}
+                    sx={{ display: 'flex', alignItems: 'flex-start' }}
                   >
-                    <Checkbox
-                      edge="start"
-                      checked={true}
-                      disabled
-                      sx={{ mr: 1 }}
-                    />
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mr: 1, pt: 1 }}>
+                      <Checkbox
+                        edge="start"
+                        checked={true}
+                        disabled
+                        sx={{ p: 0, mb: 0.5 }}
+                      />
+                      <IconButton
+                        aria-label="delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteDocument(index);
+                        }}
+                        size="small"
+                        sx={{ p: 0, color: 'error.main' }}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
                     <ListItemText
                       primary={doc.title}
                       secondary={
                         <>
                           <Typography variant="caption" component="span" display="block">
                             {doc.summary}
+                          </Typography>
+                          <Typography variant="caption" component="span" display="block" color="text.secondary">
+                            🕒 {doc.addedAt.toLocaleString('ko-KR', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hour12: false
+                            }).replace(/\. /g, '-').replace('.', '')}
                           </Typography>
                         </>
                       }
@@ -382,15 +452,17 @@ const PrintCenter = () => {
               // 각 문서의 첫 페이지에만 ID 부여 (스크롤 타겟)
               const isFirstPage = pageIndex === 0;
               const isLastPage = globalIndex === allPagesData.length - 1;
+              // 고유 key 생성 (같은 문서를 여러 번 추가해도 구분 가능)
+              const uniqueKey = `${doc.id}-${doc.addedAt.getTime()}-${pageIndex}`;
 
               return (
-                <React.Fragment key={`${doc.id}-${pageIndex}`}>
+                <React.Fragment key={uniqueKey}>
                   {renderer.renderPage(
                     doc.data,
                     chunk,
                     pageIndex,
                     totalPages,
-                    `${doc.id}-${pageIndex}`,
+                    uniqueKey,
                     isFirstPage ? `document-${doc.id}` : undefined,
                     isLastPage
                   )}

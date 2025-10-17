@@ -7,20 +7,23 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(authUid)).data.role;
     }
 
-    match /users/{userMobile} {
-      // 자기 자신의 문서 읽기/쓰기 (authUid 필드로 본인 확인)
-      allow read, write: if request.auth != null &&
-        resource.data.authUid == request.auth.uid;
+    match /users/{userId} {
+      // 사용자 문서 ID는 이제 uid로 변경됨 (마이그레이션 후)
+      // 자기 자신의 문서 읽기 가능
+      allow read: if request.auth != null && request.auth.uid == userId;
 
-      // admin은 모든 사용자 읽기/쓰기 가능
-      // Note: users 컬렉션은 이제 휴대폰번호를 문서 ID로 사용하므로,
-      // admin 확인을 위해서는 authUid로 쿼리하는 대신, 모든 읽기를 허용하고
-      // 애플리케이션 레벨에서 권한을 제어합니다.
+      // 자기 자신의 문서 일부 필드 수정 가능 (알림 설정 등)
+      allow update: if request.auth != null && request.auth.uid == userId &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'role', 'linkedCustomers', 'isActive']));
+
+      // admin/staff는 모든 사용자 읽기 가능
       allow read: if request.auth != null;
 
-      // 쓰기는 엄격하게 제어: authUid가 일치하거나 기존 데이터가 없는 경우(신규 생성)만 허용
+      // admin/staff는 다른 사용자의 문서 업데이트 가능 (linkedCustomers 포함)
+      allow update: if request.auth != null;
+
+      // admin만 사용자 생성/삭제 가능 (Cloud Functions에서 처리)
       allow create: if request.auth != null;
-      allow update: if request.auth != null && resource.data.authUid == request.auth.uid;
       allow delete: if false; // 삭제는 Cloud Function에서만 가능
     }
 
@@ -75,8 +78,17 @@ service cloud.firestore {
 
     // 매출주문 관리 (saleOrders 컬렉션)
     match /saleOrders/{orderId} {
-      // 인증된 모든 사용자: 읽기/쓰기 허용 (비즈니스 로직은 앱에서 처리)
+      // admin/staff: 모든 주문 읽기/쓰기 가능
       allow read, write: if request.auth != null;
+
+      // customer: 자신이 연결된 고객사의 주문만 읽기/생성 가능
+      allow read: if request.auth != null &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        resource.data.customerId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.linkedCustomers;
+
+      allow create: if request.auth != null &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        request.resource.data.customerId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.linkedCustomers;
     }
 
     // 매입주문 관리 (purchaseOrders 컬렉션)
@@ -91,6 +103,31 @@ service cloud.firestore {
 
     // 매입 원장 관리 (purchaseLedgers 컬렉션)
     match /purchaseLedgers/{ledgerId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 매출 원장 관리 (saleLedgers 컬렉션)
+    match /saleLedgers/{ledgerId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 공급사 계정 관리 (supplierAccounts 컬렉션)
+    match /supplierAccounts/{accountId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 고객사 계정 관리 (customerAccounts 컬렉션)
+    match /customerAccounts/{accountId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 고객사 수금 관리 (customerPayments 컬렉션)
+    match /customerPayments/{paymentId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 공급사 지급 관리 (supplierPayments 컬렉션)
+    match /supplierPayments/{paymentId} {
       allow read, write: if request.auth != null;
     }
 

@@ -28,6 +28,7 @@ class PendingOrderService {
         ...doc.data()
       } as unknown as SaleOrder));
     } catch (error) {
+      // Error handled silently
       console.error('pended 주문 조회 실패:', error);
       throw new Error('pended 주문 조회에 실패했습니다.');
     }
@@ -68,6 +69,7 @@ class PendingOrderService {
         updatedAt: now
       });
     } catch (error) {
+      // Error handled silently
       console.error('주문 강제 확정 실패:', error);
       throw error;
     }
@@ -119,6 +121,7 @@ class PendingOrderService {
         // pended 관련 필드는 유지 (이력 추적용)
       });
     } catch (error) {
+      // Error handled silently
       console.error('주문 수정 실패:', error);
       throw error;
     }
@@ -160,6 +163,7 @@ class PendingOrderService {
         updatedAt: now
       });
     } catch (error) {
+      // Error handled silently
       console.error('주문 거부 실패:', error);
       throw error;
     }
@@ -190,7 +194,7 @@ class PendingOrderService {
       const orderDoc = snapshot.docs[0];
       const now = Timestamp.now();
 
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         status,
         processedBy: adminId,
         pendedAt: now,
@@ -212,6 +216,7 @@ class PendingOrderService {
 
       await updateDoc(doc(db, COLLECTION_NAME, orderDoc.id), updateData);
     } catch (error) {
+      // Error handled silently
       console.error('주문 상태 변경 실패:', error);
       throw error;
     }
@@ -222,9 +227,9 @@ class PendingOrderService {
    * SMS 발송 또는 알림 전송
    */
   async contactCustomer(
-    saleOrderNumber: string,
-    message: string,
-    adminId: string
+    saleOrderNumber: string
+    // _message: string,
+    // _adminId: string
   ): Promise<void> {
     try {
       const q = query(
@@ -249,13 +254,6 @@ class PendingOrderService {
 
       // TODO: SMS 발송 또는 알림 전송 로직 구현
       // 현재는 로그만 기록
-      console.log(`Contact customer for order ${saleOrderNumber}:`, {
-        customerId: orderData.customerId,
-        customerName: orderData.customerInfo.businessName,
-        message,
-        contactedBy: adminId,
-        contactedAt: new Date().toISOString()
-      });
 
       // 연락 이력을 주문에 기록할 수도 있음
       const now = Timestamp.now();
@@ -264,6 +262,7 @@ class PendingOrderService {
         // contactHistory 배열에 추가하는 것도 고려 가능
       });
     } catch (error) {
+      // Error handled silently
       console.error('고객 연락 실패:', error);
       throw error;
     }
@@ -282,6 +281,7 @@ class PendingOrderService {
       const snapshot = await getDocs(q);
       return snapshot.size;
     } catch (error) {
+      // Error handled silently
       console.error('pended 주문 수 조회 실패:', error);
       return 0;
     }
@@ -304,6 +304,7 @@ class PendingOrderService {
         ...doc.data()
       } as unknown as SaleOrder));
     } catch (error) {
+      // Error handled silently
       console.error('고객사별 pended 주문 조회 실패:', error);
       throw new Error('고객사별 pended 주문 조회에 실패했습니다.');
     }

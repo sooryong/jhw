@@ -89,7 +89,7 @@ const CustomerSelector: React.FC<CustomerSelectorProps> = ({
       loadCustomers();
       setSelectedBusinessNumber(getSelectedCustomer() || '');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [open, loadCustomers]);
 
   const handleSelect = () => {

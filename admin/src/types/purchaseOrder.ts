@@ -36,9 +36,6 @@ export interface PurchaseOrder {
   // 카테고리
   category: string;            // "일일식품", "냉동식품", "공산품"
 
-  // 시간 기반 분류 (v1.1)
-  confirmationStatus: 'regular' | 'additional';  // regular: 일일확정 전, additional: 일일확정 후
-
   // 상태 관리 (생명주기)
   status: 'placed' | 'confirmed' | 'pended' | 'cancelled' | 'completed';
   placedAt: Timestamp;         // 발주일시
@@ -90,7 +87,7 @@ export class PurchaseOrderServiceError extends Error {
 // 상태 라벨 헬퍼
 export const getPurchaseOrderStatusLabel = (status: PurchaseOrder['status']): string => {
   switch (status) {
-    case 'placed': return '발주';
+    case 'placed': return '생성';
     case 'confirmed': return '확정';
     case 'pended': return '보류';
     case 'cancelled': return '취소';

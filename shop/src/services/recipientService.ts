@@ -102,6 +102,7 @@ export const getRecipients = async (): Promise<SMSRecipient[]> => {
 
     return recipients;
   } catch (error) {
+      // Error handled silently
     console.error('수신자 목록 조회 실패:', error);
     return [];
   }
@@ -152,6 +153,7 @@ export const addRecipient = async (recipientInput: SMSRecipientInput): Promise<S
       updatedAt: new Date()
     };
   } catch (error) {
+      // Error handled silently
     throw new Error(error instanceof Error ? error.message : '수신자 추가 실패');
   }
 };
@@ -168,6 +170,7 @@ export const updateRecipientUsage = async (recipientId: string): Promise<void> =
       updatedAt: serverTimestamp()
     });
   } catch (error) {
+      // Error handled silently
     console.error('수신자 사용 기록 업데이트 실패:', error);
   }
 };
@@ -179,6 +182,7 @@ export const deleteRecipient = async (recipientId: string): Promise<void> => {
   try {
     await deleteDoc(doc(db, 'smsCenterRecipients', recipientId));
   } catch (error) {
+      // Error handled silently
     throw new Error(error instanceof Error ? error.message : '수신자 삭제 실패');
   }
 };
@@ -206,6 +210,7 @@ export const updateRecipient = async (recipientId: string, updates: Partial<SMSR
 
     await updateDoc(doc(db, 'smsCenterRecipients', recipientId), updateData);
   } catch (error) {
+      // Error handled silently
     throw new Error(error instanceof Error ? error.message : '수신자 정보 수정 실패');
   }
 };
@@ -241,6 +246,7 @@ export const getRecipientsByGroup = async (group: string): Promise<SMSRecipient[
 
     return recipients;
   } catch (error) {
+      // Error handled silently
     console.error('그룹별 수신자 조회 실패:', error);
     return [];
   }

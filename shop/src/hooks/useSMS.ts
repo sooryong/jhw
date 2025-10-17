@@ -75,7 +75,8 @@ export const useSms = () => {
       const data = await smsService.getSmsHistory(filters, limit);
       setHistory(data);
       return data;
-    } catch {
+    } catch (error) {
+      // Error handled silently
       enqueueSnackbar('발송 이력을 불러올 수 없습니다', { variant: 'error' });
       return [];
     } finally {
@@ -91,7 +92,8 @@ export const useSms = () => {
       const data = await smsService.getSmsStats();
       setStats(data);
       return data;
-    } catch {
+    } catch (error) {
+      // Error handled silently
       return {
         today: { total: 0, success: 0, failed: 0 },
         month: { total: 0, success: 0, failed: 0 },
@@ -110,6 +112,7 @@ export const useSms = () => {
       setBalance(result);
       return result;
     } catch (error) {
+      // Error handled silently
       console.error('Failed to load balance:', error);
       enqueueSnackbar('잔액 정보를 불러올 수 없습니다', { variant: 'error' });
       return null;
@@ -157,6 +160,7 @@ export const useSms = () => {
 
       return result;
     } catch (error) {
+      // Error handled silently
       const errorMessage = error instanceof Error ? error.message : '메시지 발송 중 오류가 발생했습니다';
       enqueueSnackbar(errorMessage, { variant: 'error' });
       return {

@@ -95,7 +95,7 @@ export interface OrderAggregationData {
   };
 
   // 원본 주문 데이터 (optional)
-  orders?: any[];  // SaleOrder[] 타입이지만 순환 참조 방지를 위해 any 사용
+  orders?: unknown[];  // SaleOrder[] 타입이지만 순환 참조 방지를 위해 any 사용
 
   // 날짜 정보
   date: Date;

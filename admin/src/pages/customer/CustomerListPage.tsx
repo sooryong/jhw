@@ -19,6 +19,7 @@ import {
   MenuItem,
   Chip,
   Alert,
+  IconButton,
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import type { GridColDef } from '@mui/x-data-grid';
@@ -26,11 +27,12 @@ import {
   Add as AddIcon,
   People as PeopleIcon,
   Search as SearchIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { customerService } from '../../services/customerService';
 import { settingsService } from '../../services/settingsService';
 import type { Customer, CustomerFilter } from '../../types/company';
-import { formatPhone, formatTelNumber } from '../../utils/formatUtils';
+import { formatTelNumber } from '../../utils/formatUtils';
 
 const CustomerListPage: React.FC = () => {
   const navigate = useNavigate();
@@ -90,7 +92,8 @@ const CustomerListPage: React.FC = () => {
         setCustomerTypesLoading(true);
         const types = await settingsService.getCustomerTypes();
         setCustomerTypes(types);
-      } catch {
+      } catch (error) {
+      // Error handled silently
         // 오류 처리: 고객사 유형 로드 실패
       } finally {
         setCustomerTypesLoading(false);
@@ -186,15 +189,15 @@ const CustomerListPage: React.FC = () => {
       ),
     },
     {
-      field: 'smsMobile',
-      headerName: 'SMS 휴대폰',
+      field: 'primaryContact',
+      headerName: '주 담당자',
       flex: 0.13,
       align: 'center',
       headerAlign: 'center',
       renderCell: (params) => (
         <Box display="flex" alignItems="center" justifyContent="center" height="100%">
           <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-            {params.row.smsRecipient?.person1?.mobile ? formatPhone(params.row.smsRecipient.person1.mobile) : '-'}
+            {params.row.primaryContact?.mobile ? formatTelNumber(params.row.primaryContact.mobile) : '-'}
           </Typography>
         </Box>
       ),
@@ -214,6 +217,28 @@ const CustomerListPage: React.FC = () => {
             variant="outlined"
             sx={{ fontSize: '0.875rem' }}
           />
+        </Box>
+      ),
+    },
+    {
+      field: 'actions',
+      headerName: '수정',
+      width: 60,
+      align: 'center',
+      headerAlign: 'center',
+      sortable: false,
+      renderCell: (params) => (
+        <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/customers/${encodeURIComponent(params.row.businessNumber)}`);
+            }}
+            sx={{ color: 'primary.main' }}
+          >
+            <EditIcon fontSize="small" />
+          </IconButton>
         </Box>
       ),
     },

@@ -54,7 +54,7 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
     return { order, items };
   }
 
-  chunkPages(data: InboundInspectionData): (PurchaseOrderItem & { category?: string })[][] {
+  chunkPages(data: InboundInspectionData): unknown[][] {
     const ITEMS_PER_PAGE = 17;
     const chunks: (PurchaseOrderItem & { category?: string })[][] = [];
 
@@ -81,13 +81,13 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
 
   renderPage(
     data: InboundInspectionData,
-    chunk: (PurchaseOrderItem & { category?: string })[],
+    chunk: unknown[],
     pageIndex: number,
     totalPages: number,
     key: string,
-    id?: string,
-    _isLastPage?: boolean
+    id?: string
   ): ReactNode {
+    const typedChunk = chunk as (PurchaseOrderItem & { category?: string })[];
     const currentPage = pageIndex + 1;
 
     return (
@@ -114,18 +114,25 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
           }
         }}
       >
-        <Box>
+        <Box sx={{
+          minHeight: '297mm',
+          display: 'flex',
+          flexDirection: 'column',
+          '@media print': {
+            minHeight: '297mm'
+          }
+        }}>
           {/* 머릿글 */}
           <Box sx={{ mb: 1 }}>
             <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-              JWS 플랫폼
+              JHW 플랫폼
             </Typography>
           </Box>
 
           {/* 제목 */}
           <Box sx={{ mb: 3, textAlign: 'center' }}>
             <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-              일일주문 입고 검수표
+              매입주문 입고 검수표
             </Typography>
           </Box>
 
@@ -150,7 +157,7 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
             </Box>
             <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: 1, borderBottom: 1, borderColor: 'divider', p: 1, minHeight: 50 }}>
               <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                발주일시:
+                생성일시:
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '0.875rem', fontWeight: 'bold', textAlign: 'right' }}>
                 {format(data.order.placedAt.toDate(), 'yyyy-MM-dd HH:mm')}
@@ -243,7 +250,7 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
             </Box>
 
             {/* 테이블 바디 */}
-            {chunk.map((item, idx) => (
+            {typedChunk.map((item, idx) => (
               <Box
                 key={idx}
                 sx={{
@@ -285,23 +292,30 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
         <Box sx={{ display: 'grid', gridTemplateColumns: '40% 20% 40%', border: 1, borderColor: 'divider', mt: 2 }}>
           <Box sx={{ p: 1, borderRight: 1, borderColor: 'divider', minHeight: 70, display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="body2" sx={{ fontWeight: 'bold', minWidth: '80px' }}>
-              공급사 확인:
+              담당자 확인:
             </Typography>
             <Box sx={{ flex: 1, border: 1, borderColor: 'divider', height: 50, bgcolor: 'grey.50' }} />
           </Box>
-          <Box sx={{ p: 1, borderRight: 1, borderColor: 'divider', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>
-              페이지
-            </Typography>
+          <Box sx={{ p: 1, borderRight: 1, borderColor: 'divider', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
               {currentPage}/{totalPages}
             </Typography>
           </Box>
-          <Box sx={{ p: 1, minHeight: 70, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2" sx={{ fontWeight: 'bold', minWidth: '80px' }}>
-              검수자 확인:
-            </Typography>
-            <Box sx={{ flex: 1, border: 1, borderColor: 'divider', height: 50, bgcolor: 'grey.50' }} />
+          <Box sx={{ p: 1, minHeight: 70, display: 'flex', alignItems: 'center' }}>
+            <Box sx={{ width: '50%', display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                주문 수량:
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                {data.items.reduce((sum, item) => sum + (item?.quantity || 0), 0)}
+              </Typography>
+            </Box>
+            <Box sx={{ width: '50%', display: 'flex', alignItems: 'center', gap: 1, pl: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                입고 수량:
+              </Typography>
+              <Box sx={{ flex: 1, borderBottom: 1, borderColor: 'divider', height: 24 }} />
+            </Box>
           </Box>
         </Box>
       </Box>

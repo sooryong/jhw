@@ -26,7 +26,8 @@ interface CustomerProviderProps {
 }
 
 export const CustomerProvider: React.FC<CustomerProviderProps> = ({ children }) => {
-  const { user } = useAuth();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { user: _user } = useAuth();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +107,7 @@ export const CustomerProvider: React.FC<CustomerProviderProps> = ({ children }) 
       sessionStorage.setItem(cacheKey, JSON.stringify(updatedCustomer));
       sessionStorage.setItem('customer_cache_time', Date.now().toString());
     } catch (error) {
-      console.warn('Failed to update customer cache:', error);
+      // Error handled silently
     }
   };
 

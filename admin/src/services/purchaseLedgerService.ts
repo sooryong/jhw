@@ -35,6 +35,7 @@ export const getAllPurchaseLedgers = async (): Promise<PurchaseLedger[]> => {
 
     return ledgers;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase ledgers:', error);
     throw new Error('매입 원장 조회 중 오류가 발생했습니다.');
   }
@@ -57,6 +58,7 @@ export const getPurchaseLedgerById = async (ledgerId: string): Promise<PurchaseL
       ...docSnap.data()
     } as unknown as PurchaseLedger;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase ledger:', error);
     throw new Error('매입 원장 조회 중 오류가 발생했습니다.');
   }
@@ -81,6 +83,7 @@ export const getPurchaseLedgersBySupplierId = async (supplierId: string): Promis
 
     return ledgers;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase ledgers by supplier:', error);
     throw new Error('공급사별 매입 원장 조회 중 오류가 발생했습니다.');
   }
@@ -109,6 +112,7 @@ export const getPurchaseLedgersByDateRange = async (
 
     return ledgers;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase ledgers by date range:', error);
     throw new Error('기간별 매입 원장 조회 중 오류가 발생했습니다.');
   }
@@ -144,8 +148,40 @@ export const getPurchaseLedgersByCategory = async (category: string): Promise<Pu
 
     return ledgers;
   } catch (error) {
+      // Error handled silently
     console.error('Error fetching purchase ledgers by category:', error);
     throw new Error('카테고리별 매입 원장 조회 중 오류가 발생했습니다.');
+  }
+};
+
+/**
+ * 공급사별 + 기간별 매입 원장 조회
+ */
+export const getPurchaseLedgersBySupplierAndDateRange = async (
+  supplierId: string,
+  startDate: Date,
+  endDate: Date
+): Promise<PurchaseLedger[]> => {
+  try {
+    const q = query(
+      collection(db, 'purchaseLedgers'),
+      where('supplierId', '==', supplierId),
+      where('receivedAt', '>=', Timestamp.fromDate(startDate)),
+      where('receivedAt', '<=', Timestamp.fromDate(endDate)),
+      orderBy('receivedAt', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+    const ledgers = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as unknown as PurchaseLedger));
+
+    return ledgers;
+  } catch (error) {
+      // Error handled silently
+    console.error('Error fetching purchase ledgers by supplier and date range:', error);
+    throw new Error('공급사별 기간별 매입 원장 조회 중 오류가 발생했습니다.');
   }
 };
 
@@ -175,5 +211,62 @@ export const calculatePurchaseLedgerStats = (ledgers: PurchaseLedger[]): Purchas
     totalReceivedAmount,
     totalVariance,
     variancePercentage
+  };
+};
+
+/**
+ * 월별 매입 통합 통계 (지급 포함)
+ */
+export interface MonthlyPurchaseStats {
+  totalPurchaseAmount: number;      // 매입 금액 (원장 합계)
+  totalPaymentAmount: number;       // 지급액 (지급 합계)
+  currentBalance: number;           // 미지급금액 (차액)
+  ledgerCount: number;              // 원장 건수
+  paymentCount: number;             // 지급 건수
+  uniqueProductCount: number;       // 상품 종류 (고유 상품 수)
+  totalItemQuantity: number;        // 상품 수량 (총 품목 수)
+}
+
+export const calculateMonthlyPurchaseStats = (
+  ledgers: PurchaseLedger[],
+  payments: { paymentAmount: number }[]
+): MonthlyPurchaseStats => {
+  // 매입 금액
+  const totalPurchaseAmount = ledgers.reduce((sum, ledger) => sum + ledger.totalAmount, 0);
+
+  // 지급액
+  const totalPaymentAmount = payments.reduce((sum, payment) => sum + payment.paymentAmount, 0);
+
+  // 미지급금액
+  const currentBalance = totalPurchaseAmount - totalPaymentAmount;
+
+  // 원장 건수
+  const ledgerCount = ledgers.length;
+
+  // 지급 건수
+  const paymentCount = payments.length;
+
+  // 상품 종류 (고유 productId 개수)
+  const uniqueProductIds = new Set<string>();
+  ledgers.forEach(ledger => {
+    ledger.ledgerItems.forEach(item => {
+      uniqueProductIds.add(item.productId);
+    });
+  });
+  const uniqueProductCount = uniqueProductIds.size;
+
+  // 상품 수량 (총 품목 quantity 합계)
+  const totalItemQuantity = ledgers.reduce((sum, ledger) => {
+    return sum + ledger.ledgerItems.reduce((itemSum, item) => itemSum + item.quantity, 0);
+  }, 0);
+
+  return {
+    totalPurchaseAmount,
+    totalPaymentAmount,
+    currentBalance,
+    ledgerCount,
+    paymentCount,
+    uniqueProductCount,
+    totalItemQuantity
   };
 };

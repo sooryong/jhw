@@ -13,8 +13,6 @@ import {
   Paper,
   Typography,
   Card,
-  CardContent,
-  CardActions,
   Button,
   Grid,
   CircularProgress,
@@ -109,6 +107,7 @@ const CustomerSelectionPage: React.FC = () => {
       navigate(`/shop?customer=${businessNumber}`, { replace: true });
 
     } catch (error) {
+      // Error handled silently
       console.error('고객사 선택 실패:', error);
       setError('고객사 선택에 실패했습니다.');
     } finally {
@@ -121,6 +120,7 @@ const CustomerSelectionPage: React.FC = () => {
       await logout();
       navigate('/login', { replace: true });
     } catch (error) {
+      // Error handled silently
       console.error('로그아웃 실패:', error);
       setError('로그아웃에 실패했습니다.');
     }

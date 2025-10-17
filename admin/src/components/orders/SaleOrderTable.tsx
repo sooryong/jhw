@@ -56,6 +56,7 @@ const SaleOrderTable = ({ date, statusFilter }: SaleOrderTableProps) => {
 
       setOrders(filtered);
     } catch (error) {
+      // Error handled silently
       console.error('Error loading sale orders:', error);
     } finally {
       setLoading(false);

@@ -102,7 +102,8 @@ const ProductDetailPage: React.FC = () => {
       const formDataObj = productToFormData(productData);
       setFormData(formDataObj);
       setOriginalData(formDataObj);
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 오류 처리: 상품 정보 로드 실패
       setSubmitError('상품 정보를 불러올 수 없습니다.');
     } finally {
@@ -205,6 +206,7 @@ const ProductDetailPage: React.FC = () => {
         severity: 'success',
       });
     } catch (error) {
+      // Error handled silently
       // 오류 처리: 상품 수정 실패
       const errorMessage = error instanceof Error ? error.message : '상품 수정 중 오류가 발생했습니다.';
       setSnackbar({
@@ -243,7 +245,8 @@ const ProductDetailPage: React.FC = () => {
         setOriginalData(prev => prev ? { ...prev, isActive: newStatus } : null);
       }
 
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 오류 처리: 상품 상태 변경 실패
 
       // 롤백
@@ -265,7 +268,8 @@ const ProductDetailPage: React.FC = () => {
     try {
       await productService.deleteProduct(productId);
       navigate('/products');
-    } catch {
+    } catch (error) {
+      // Error handled silently
       // 오류 처리: 상품 삭제 실패
       setSubmitError('상품 삭제 중 오류가 발생했습니다.');
     } finally {

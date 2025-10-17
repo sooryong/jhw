@@ -13,13 +13,7 @@ import {
   Typography,
   IconButton,
   Paper,
-  TextField,
   Grid,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  FormHelperText,
   Alert,
   Dialog,
   DialogTitle,
@@ -48,24 +42,21 @@ import {
   Cancel as CancelIcon,
   Delete as DeleteIcon,
   Person as PersonIcon,
-  Settings as SettingsIcon,
   LocalOffer as PriceIcon,
   Add as AddIcon,
   Assessment as StatsIcon,
-  Message as MessageIcon,
+  Close as CloseIcon,
+  Phone as PhoneIcon,
 } from '@mui/icons-material';
 import { customerService } from '../../services/customerService';
 import { settingsService } from '../../services/settingsService';
 import CompanyForm from '../../components/company/CompanyForm';
+import UserLinkModal from '../../components/user/UserLinkModal';
 import type { Customer, CustomerFormData, SpecialPrice } from '../../types/company';
-import { businessNumberUtils } from '../../types/company';
 import {
   validateCustomerForm,
-  normalizeCustomerFormData,
   hasValidationErrors,
 } from '../../utils/companyValidation';
-import { normalizeNumber } from '../../utils/numberUtils';
-import type { NormalizedMobile, CustomerSMSRecipients } from '../../types/phoneNumber';
 import {
   formatBusinessNumber,
   formatMobile,
@@ -103,6 +94,14 @@ const CustomerDetailPage: React.FC = () => {
   const [customerTypes, setCustomerTypes] = useState<string[]>([]);
   const [customerTypesLoading, setCustomerTypesLoading] = useState(true);
 
+  // 담당자 조회 상태
+
+  // 사용자 검색 모달 상태
+  const [userSearchModal, setUserSearchModal] = useState<{
+    open: boolean;
+    contactType: 'primary' | 'secondary' | null;
+  }>({ open: false, contactType: null });
+
   // 고객사 유형 로드
   useEffect(() => {
     const loadCustomerTypes = async () => {
@@ -110,7 +109,7 @@ const CustomerDetailPage: React.FC = () => {
         setCustomerTypesLoading(true);
         const types = await settingsService.getCustomerTypes();
         setCustomerTypes(types);
-      } catch {
+      } catch (error) {
         // 오류 처리: 고객사 유형 로드 실패
       } finally {
         setCustomerTypesLoading(false);
@@ -138,6 +137,7 @@ const CustomerDetailPage: React.FC = () => {
       setCustomer(customerData);
 
       // FormData로 변환 (포맷팅 적용)
+      // ContactInfo 구조에서 직접 데이터 가져오기 (userId 포함)
       const formDataObj: CustomerFormData = {
         businessNumber: formatBusinessNumber(customerData.businessNumber),
         businessName: customerData.businessName,
@@ -148,16 +148,16 @@ const CustomerDetailPage: React.FC = () => {
         presidentMobile: customerData.presidentMobile ? formatMobile(customerData.presidentMobile) : '',
         businessPhone: customerData.businessPhone ? formatPhone(customerData.businessPhone) : '',
         businessEmail: customerData.businessEmail || '',
-        smsRecipient: {
-          person1: {
-            name: customerData.smsRecipient.person1.name,
-            mobile: formatMobile(customerData.smsRecipient.person1.mobile),
-          },
-          person2: customerData.smsRecipient.person2 ? {
-            name: customerData.smsRecipient.person2.name,
-            mobile: formatMobile(customerData.smsRecipient.person2.mobile),
-          } : undefined,
+        primaryContact: {
+          userId: customerData.primaryContact?.userId,
+          name: customerData.primaryContact?.name || '',
+          mobile: customerData.primaryContact?.mobile ? formatMobile(customerData.primaryContact.mobile) : '',
         },
+        secondaryContact: customerData.secondaryContact ? {
+          userId: customerData.secondaryContact.userId,
+          name: customerData.secondaryContact.name,
+          mobile: formatMobile(customerData.secondaryContact.mobile),
+        } : { name: '', mobile: '' },
         isActive: customerData.isActive,
         customerType: customerData.customerType,
         discountRate: customerData.discountRate,
@@ -170,8 +170,9 @@ const CustomerDetailPage: React.FC = () => {
 
       setFormData(formDataObj);
       setOriginalData(formDataObj);
-    } catch {
+    } catch (error) {
       // 오류 처리: 고객사 정보 로드 실패
+      console.error('고객사 로드 에러:', error);
       setSubmitError('고객사 정보를 불러올 수 없습니다.');
     } finally {
       setLoading(false);
@@ -202,23 +203,120 @@ const CustomerDetailPage: React.FC = () => {
     setSubmitError(null);
   };
 
-  // SMS 수신자 변경 (person1/person2 구조)
-  const handleSMSRecipientUpdate = (person: 'person1' | 'person2', field: 'name' | 'mobile', value: string) => {
-    if (!formData) return;
 
+  // 사용자 검색 모달 열기 (자동으로 빈 슬롯 결정)
+  const handleOpenUserSearch = (contact?: 'primary' | 'secondary') => {
+    // contact가 지정되지 않으면 자동으로 빈 슬롯 찾기
+    let targetContact: 'primary' | 'secondary' = 'primary';
+
+    if (!contact) {
+      // 담당자1이 비어있으면 담당자1에 추가
+      if (!formData?.primaryContact?.name && !formData?.primaryContact?.mobile) {
+        targetContact = 'primary';
+      }
+      // 담당자1이 있고 담당자2가 비어있으면 담당자2에 추가
+      else if (!formData?.secondaryContact?.name && !formData?.secondaryContact?.mobile) {
+        targetContact = 'secondary';
+      }
+    } else {
+      targetContact = contact;
+    }
+
+    setUserSearchModal({ open: true, contactType: targetContact });
+  };
+
+  // 사용자 검색 모달 닫기
+  const handleCloseUserSearch = () => {
+    setUserSearchModal({ open: false, contactType: null });
+  };
+
+  // 사용자 선택 핸들러
+  const handleUserSelect = (user: unknown) => {
+    if (!formData || !userSearchModal.contactType) return;
+
+    const contact = userSearchModal.contactType;
+    const contactKey = contact === 'primary' ? 'primaryContact' : 'secondaryContact';
+
+    // 사용자 정보 자동 입력
     setFormData(prev => {
       if (!prev) return prev;
       return {
         ...prev,
-        smsRecipient: {
-          ...prev.smsRecipient,
-          [person]: {
-            ...prev.smsRecipient[person],
-            [field]: field === 'mobile' ? normalizeNumber(value) as NormalizedMobile : value
-          }
+        [contactKey]: {
+          ...prev[contactKey],
+          userId: (user as { uid: string; name: string; mobile: string }).uid,
+          name: (user as { uid: string; name: string; mobile: string }).name,
+          mobile: formatMobile((user as { uid: string; name: string; mobile: string }).mobile)
         }
       };
     });
+
+    setSnackbar({
+      open: true,
+      message: `사용자 ${(user as { uid: string; name: string; mobile: string }).name}을(를) 선택했습니다.`,
+      severity: 'success',
+    });
+
+    // 모달 닫기
+    handleCloseUserSearch();
+  };
+
+  // 담당자 제거 (담당자2 제거 시 담당자1로 승격 없음, 담당자1 제거 시 담당자2를 담당자1로 승격)
+  const handleRemoveContact = (contact: 'primary' | 'secondary') => {
+    const contactLabel = contact === 'primary' ? '담당자1' : '담당자2';
+
+    if (!window.confirm(`${contactLabel}을(를) 제거하시겠습니까?`)) {
+      return;
+    }
+
+    if (contact === 'primary') {
+      // 담당자1 제거: 담당자2가 있으면 담당자1로 승격
+      if (formData?.secondaryContact?.name || formData?.secondaryContact?.mobile) {
+        setFormData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            primaryContact: prev.secondaryContact,
+            secondaryContact: { name: '', mobile: '' }
+          };
+        });
+            setSnackbar({
+          open: true,
+          message: '담당자1을 제거하고 담당자2를 담당자1로 승격했습니다.',
+          severity: 'success',
+        });
+      } else {
+        // 담당자2가 없으면 그냥 담당자1만 제거
+        setFormData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            primaryContact: { name: '', mobile: '' }
+          };
+        });
+
+        setSnackbar({
+          open: true,
+          message: '담당자1을 제거했습니다.',
+          severity: 'success',
+        });
+      }
+    } else {
+      // 담당자2 제거
+      setFormData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          secondaryContact: { name: '', mobile: '' }
+        };
+      });
+
+      setSnackbar({
+        open: true,
+        message: '담당자2를 제거했습니다.',
+        severity: 'success',
+      });
+    }
   };
 
   // 변경사항 확인
@@ -266,10 +364,7 @@ const CustomerDetailPage: React.FC = () => {
     setSubmitError(null);
 
     try {
-      // 폼 데이터 정규화 (통합 유틸리티 사용)
-      const normalizedData = normalizeCustomerFormData(formData);
-
-      await customerService.updateCustomer(businessNumber, normalizedData);
+      await customerService.updateCustomer(businessNumber, formData);
 
       // 데이터 새로고침
       const updatedCustomer = await customerService.getCustomer(businessNumber);
@@ -324,7 +419,7 @@ const CustomerDetailPage: React.FC = () => {
         setOriginalData(prev => prev ? { ...prev, isActive: newStatus } : null);
       }
 
-    } catch {
+    } catch (error) {
       // 오류 처리: 고객사 상태 변경 실패
 
       // 롤백
@@ -346,7 +441,7 @@ const CustomerDetailPage: React.FC = () => {
     try {
       await customerService.deleteCustomer(businessNumber);
       navigate('/customers');
-    } catch {
+    } catch (error) {
       // 오류 처리: 고객사 삭제 실패
       setSubmitError('고객사 삭제 중 오류가 발생했습니다.');
     } finally {
@@ -378,7 +473,7 @@ const CustomerDetailPage: React.FC = () => {
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      width: '80%',
+      width: '100%',
       margin: '0 auto',
       maxWidth: '100vw',
       boxSizing: 'border-box'
@@ -480,7 +575,129 @@ const CustomerDetailPage: React.FC = () => {
         )}
 
         <Grid container spacing={1}>
-          {/* CompanyForm 컴포넌트 사용 (고객사 필드 포함, SMS 수신자 제외) */}
+          {/* 👤 주문 담당자 카드 (최상단) */}
+          <Grid size={{ xs: 12 }}>
+            <Paper sx={{ p: 3, height: 'auto' }}>
+              {/* 헤더 */}
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
+                  <Typography variant="h6">
+                    주문 담당자(SMS 수신)
+                  </Typography>
+                </Box>
+                {/* 담당자 추가 버튼 - 담당자가 2명 미만일 때만 표시 */}
+                {editMode && (
+                  ((!formData.primaryContact?.name && !formData.primaryContact?.mobile) ||
+                   (!formData.secondaryContact?.name && !formData.secondaryContact?.mobile)) && (
+                    <Button
+                      variant="contained"
+                      size="small"
+                      startIcon={<AddIcon />}
+                      onClick={() => handleOpenUserSearch()}
+                    >
+                      담당자 추가
+                    </Button>
+                  )
+                )}
+              </Box>
+
+              {/* 담당자 목록 */}
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {/* 담당자1 */}
+                {(formData.primaryContact?.name || formData.primaryContact?.mobile) ? (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                      p: 2,
+                      border: 1,
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      bgcolor: 'background.default'
+                    }}
+                  >
+                    <Chip
+                      label="담당자1"
+                      color="primary"
+                      size="small"
+                      sx={{ minWidth: '80px', fontWeight: 600 }}
+                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}>
+                      <PhoneIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                      <Typography variant="body1">
+                        {formData.primaryContact.mobile || '-'}
+                      </Typography>
+                    </Box>
+                    <Typography variant="body1" sx={{ fontWeight: 600, flex: 1 }}>
+                      {formData.primaryContact.name || '-'}
+                    </Typography>
+                    {editMode && (
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleRemoveContact('primary')}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                ) : null}
+
+                {/* 담당자2 */}
+                {(formData.secondaryContact?.name || formData.secondaryContact?.mobile) ? (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                      p: 2,
+                      border: 1,
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      bgcolor: 'background.default'
+                    }}
+                  >
+                    <Chip
+                      label="담당자2"
+                      color="secondary"
+                      size="small"
+                      sx={{ minWidth: '80px', fontWeight: 600 }}
+                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}>
+                      <PhoneIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                      <Typography variant="body1">
+                        {formData.secondaryContact.mobile || '-'}
+                      </Typography>
+                    </Box>
+                    <Typography variant="body1" sx={{ fontWeight: 600, flex: 1 }}>
+                      {formData.secondaryContact.name || '-'}
+                    </Typography>
+                    {editMode && (
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleRemoveContact('secondary')}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                ) : null}
+
+                {/* 빈 상태 메시지 */}
+                {!formData.primaryContact?.name && !formData.primaryContact?.mobile &&
+                 !formData.secondaryContact?.name && !formData.secondaryContact?.mobile && (
+                  <Alert severity="info">
+                    등록된 담당자가 없습니다. {editMode && '상단의 [담당자 추가] 버튼을 클릭하여 담당자를 추가하세요.'}
+                  </Alert>
+                )}
+              </Box>
+            </Paper>
+          </Grid>
+
+          {/* CompanyForm 컴포넌트 사용 (고객사 필드 포함, 주문 담당자 제외) */}
           <Grid size={{ xs: 12 }}>
             <CompanyForm
               businessNumber={formData.businessNumber}
@@ -492,7 +709,6 @@ const CustomerDetailPage: React.FC = () => {
               presidentMobile={formData.presidentMobile}
               businessPhone={formData.businessPhone}
               businessEmail={formData.businessEmail}
-              smsRecipient={formData.smsRecipient as CustomerSMSRecipients}
               customerType={formData.customerType}
               discountRate={formData.discountRate}
               customerTypes={customerTypes}
@@ -500,80 +716,8 @@ const CustomerDetailPage: React.FC = () => {
               errors={errors}
               readOnly={!editMode}
               onChange={handleChange}
-              onSMSRecipientUpdate={handleSMSRecipientUpdate}
-              renderSmsRecipient={false}
               renderCustomerFields={true}
             />
-          </Grid>
-
-          {/* 📱 SMS 수신자 카드 */}
-          <Grid size={{ xs: 12 }}>
-            <Paper sx={{ p: 3, height: 'auto' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <MessageIcon sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography variant="h6">
-                  SMS 수신자
-                </Typography>
-              </Box>
-
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    label="이름1"
-                    value={formData.smsRecipient.person1?.name || ''}
-                    onChange={(e) => handleSMSRecipientUpdate('person1', 'name', e.target.value)}
-                    error={!!errors.smsRecipient_person1_name}
-                    helperText={errors.smsRecipient_person1_name}
-                    InputProps={{ readOnly: !editMode }}
-                    required
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    label="휴대폰1"
-                    value={formData.smsRecipient.person1?.mobile || ''}
-                    onChange={(e) => {
-                      const formatted = formatMobile(e.target.value);
-                      handleSMSRecipientUpdate('person1', 'mobile', formatted);
-                    }}
-                    error={!!errors.smsRecipient_person1_mobile}
-                    helperText={errors.smsRecipient_person1_mobile}
-                    placeholder="010-1234-5678"
-                    InputProps={{ readOnly: !editMode }}
-                    required
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    label="이름2"
-                    value={formData.smsRecipient.person2?.name || ''}
-                    onChange={(e) => handleSMSRecipientUpdate('person2', 'name', e.target.value)}
-                    error={!!errors.smsRecipient_person2_name}
-                    helperText={errors.smsRecipient_person2_name}
-                    InputProps={{ readOnly: !editMode }}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    label="휴대폰2"
-                    value={formData.smsRecipient.person2?.mobile || ''}
-                    onChange={(e) => {
-                      const formatted = formatMobile(e.target.value);
-                      handleSMSRecipientUpdate('person2', 'mobile', formatted);
-                    }}
-                    error={!!errors.smsRecipient_person2_mobile}
-                    helperText={errors.smsRecipient_person2_mobile}
-                    placeholder="010-1234-5678"
-                    InputProps={{ readOnly: !editMode }}
-                  />
-                </Grid>
-              </Grid>
-            </Paper>
           </Grid>
 
           {/* 등록 정보 (읽기 전용) */}
@@ -777,6 +921,18 @@ const CustomerDetailPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 담당자 연결 모달 */}
+      <UserLinkModal
+        open={userSearchModal.open}
+        onClose={handleCloseUserSearch}
+        onSelect={handleUserSelect}
+        title={`담당자${userSearchModal.contactType === 'primary' ? '1' : '2'} 연결`}
+        excludeUserIds={[
+          formData?.primaryContact?.userId,
+          formData?.secondaryContact?.userId
+        ].filter(Boolean) as string[]}
+      />
 
       {/* Snackbar */}
       <Snackbar

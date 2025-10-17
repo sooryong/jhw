@@ -25,8 +25,6 @@ import {
 import {
   Dashboard,
   Sms,
-  Store,
-  ShoppingCart,
   Inventory,
   LocalShipping,
   Assessment,
@@ -76,7 +74,6 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
   // 역할별 메뉴 구성
   const getMenuItems = (): MenuItem[] => {
     const isAdminOrStaff = user?.role === 'admin' || user?.role === 'staff';
-    const isCustomer = user?.role === 'customer';
 
     const baseItems: MenuItem[] = [
       {
@@ -109,27 +106,20 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
         {
           text: '일일주문 출하',
           icon: <LocalShipping />,
-          path: '/outbound',
-          implemented: false,
+          path: '/orders/outbound',
+          implemented: true,
         },
         {
-          text: '원장 관리',
+          text: '공급사 원장 관리',
           icon: <Assessment />,
+          path: '/ledgers/purchase',
           implemented: true,
-          subItems: [
-            {
-              text: '매입 원장',
-              icon: <Assessment />,
-              path: '/ledgers/purchase',
-              implemented: true,
-            },
-            {
-              text: '매출 원장',
-              icon: <Assessment />,
-              path: '/ledgers/sales',
-              implemented: false,
-            },
-          ],
+        },
+        {
+          text: '고객사 원장 관리',
+          icon: <Assessment />,
+          path: '/ledgers/sales',
+          implemented: true,
         },
         {
           text: '기준정보 관리',
@@ -159,8 +149,8 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
       );
     }
 
-    // admin 전용: 시스템 설정
-    if (user?.role === 'admin') {
+    // 시스템 설정
+    if (isAdminOrStaff) {
       baseItems.push({
         text: '시스템 설정',
         icon: <Settings />,
@@ -170,7 +160,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
             text: '사용자 설정',
             icon: <ManageAccountsIcon />,
             path: '/users',
-            implemented: true,
+            implemented: user?.role === 'admin',
           },
           {
             text: 'SMS 센터',
@@ -205,6 +195,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
       await logout();
       navigate('/'); // RoleBasedRedirect가 /login으로 리다이렉트
     } catch {
+      // Error handled silently
       // 로그아웃 오류 처리
     }
     setUserMenuAnchor(null);
@@ -377,6 +368,11 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
                     </List>
                   </Collapse>
                 )}
+
+                {/* 고객사 원장 관리 다음에 구분선 추가 */}
+                {item.text === '고객사 원장 관리' && (
+                  <Divider sx={{ my: 1.5, mx: 2 }} />
+                )}
               </React.Fragment>
             ))}
           </List>
@@ -401,11 +397,8 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
               <Person />
             </Avatar>
             <Box sx={{ flexGrow: 1 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
-                {user?.name}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {user?.role}
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {user?.name} ({user?.role})
               </Typography>
             </Box>
           </ListItemButton>

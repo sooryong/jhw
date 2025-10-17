@@ -4,12 +4,13 @@
  * 주요 내용: Firebase users 컬렉션 관련 서비스 함수 (번호 정규화 규칙 적용)
  */
 
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions, auth } from '../config/firebase';
 import type { JWSUser, JWSUserDisplay } from '../types/user';
 import {
   normalizeNumber,
+  normalizeBusinessNumber,
   formatMobile,
   formatBusinessNumber,
   isValidMobile
@@ -27,8 +28,9 @@ interface FirestoreUser {
   authUid?: string; // Firebase Auth UID (문서 ID와 별도)
   mobile?: string; // 정규화된 휴대폰번호 (11자리 숫자, 문서 ID와 동일)
   name?: string;
-  role?: 'admin' | 'staff' | 'customer';
+  role?: 'admin' | 'staff' | 'customer' | 'supplier';
   linkedCustomers?: string[]; // 연결된 고객사 사업자번호 배열 (정규화)
+  linkedSuppliers?: string[]; // 연결된 공급사 사업자번호 배열 (정규화)
   isActive?: boolean;
   createdAt?: Timestamp; // Firestore timestamp
   lastLogin?: Timestamp;
@@ -49,6 +51,7 @@ const convertFirestoreToJWSUser = (uid: string, userData: FirestoreUser): JWSUse
     mobile: userData.mobile as NormalizedMobile || '' as NormalizedMobile,
     role: userData.role || 'staff',
     linkedCustomers: userData.linkedCustomers as NormalizedBusinessNumber[] || [],
+    linkedSuppliers: userData.linkedSuppliers as NormalizedBusinessNumber[] || [],
     isActive: userData.isActive ?? true,
     createdAt: userData.createdAt?.toDate() || new Date(),
     lastLogin: userData.lastLogin?.toDate() || null,
@@ -69,21 +72,26 @@ export const convertUserToDisplay = (user: JWSUser): JWSUserDisplay => {
     linkedCustomers: user.linkedCustomers?.map(
       num => formatBusinessNumber(num) as FormattedBusinessNumber
     ),
+    linkedSuppliers: user.linkedSuppliers?.map(
+      num => formatBusinessNumber(num) as FormattedBusinessNumber
+    ),
     smsRecipientInfo: user.smsRecipientInfo ? {
       mobile: formatMobile(user.smsRecipientInfo.mobile) as FormattedMobile,
       name: user.smsRecipientInfo.name,
       linkedCustomerNumbers: user.smsRecipientInfo.linkedCustomerNumbers.map(
         num => formatBusinessNumber(num) as FormattedBusinessNumber
       ),
-      recipientRole: user.smsRecipientInfo.recipientRole
+      recipientRole: user.smsRecipientInfo.recipientRole,
+      customerRole: user.smsRecipientInfo.customerRole,
+      notificationPreferences: user.smsRecipientInfo.notificationPreferences
     } : undefined
   };
 };
 
 /**
- * 휴대폰번호로 사용자 찾기
+ * 휴대폰번호로 사용자 찾기 (모든 역할 검색)
  * @param mobile 휴대폰번호 (하이픈 포함/미포함 모두 지원)
- * @returns 사용자 객체 또는 null
+ * @returns 사용자 객체 또는 null (여러 명 있으면 첫 번째 반환)
  */
 export const findUserByMobile = async (mobile: string): Promise<JWSUser | null> => {
   try {
@@ -95,16 +103,63 @@ export const findUserByMobile = async (mobile: string): Promise<JWSUser | null> 
       throw new Error('올바른 휴대폰번호 형식이 아닙니다.');
     }
 
-    // 휴대폰번호를 문서 ID로 직접 조회 (쿼리 불필요)
-    const userDoc = await getDoc(doc(db, 'users', normalizedMobile));
+    // 휴대폰번호로 모든 사용자 조회 (여러 역할 가능)
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('mobile', '==', normalizedMobile));
+    const querySnapshot = await getDocs(q);
 
-    if (!userDoc.exists()) {
+    if (querySnapshot.empty) {
       return null;
     }
 
+    // 첫 번째 일치하는 사용자 반환
+    const userDoc = querySnapshot.docs[0];
     const userData = userDoc.data() as FirestoreUser;
     return convertFirestoreToJWSUser(userDoc.id, userData);
   } catch (error) {
+      // Error handled silently
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('사용자 조회 중 오류가 발생했습니다.');
+  }
+};
+
+/**
+ * 휴대폰번호와 역할로 사용자 찾기
+ * @param mobile 휴대폰번호 (하이픈 포함/미포함 모두 지원)
+ * @param role 사용자 역할
+ * @returns 사용자 객체 또는 null
+ */
+export const findUserByMobileAndRole = async (mobile: string, role: string): Promise<JWSUser | null> => {
+  try {
+    // 휴대폰번호 정규화 (숫자만 추출)
+    const normalizedMobile = normalizeNumber(mobile) as NormalizedMobile;
+
+    // 휴대폰번호 유효성 검증
+    if (!isValidMobile(normalizedMobile)) {
+      throw new Error('올바른 휴대폰번호 형식이 아닙니다.');
+    }
+
+    // 휴대폰번호 + 역할로 사용자 조회
+    const usersRef = collection(db, 'users');
+    const q = query(
+      usersRef,
+      where('mobile', '==', normalizedMobile),
+      where('role', '==', role)
+    );
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    // 첫 번째 일치하는 사용자 반환
+    const userDoc = querySnapshot.docs[0];
+    const userData = userDoc.data() as FirestoreUser;
+    return convertFirestoreToJWSUser(userDoc.id, userData);
+  } catch (error) {
+      // Error handled silently
     if (error instanceof Error) {
       throw error;
     }
@@ -128,6 +183,7 @@ export const getUserById = async (uid: string): Promise<JWSUser | null> => {
     const userData = userDoc.data() as FirestoreUser;
     return convertFirestoreToJWSUser(userDoc.id, userData);
   } catch (error) {
+      // Error handled silently
     if (error instanceof Error) {
       throw error;
     }
@@ -157,6 +213,7 @@ export const getUserByAuthUid = async (authUid: string): Promise<JWSUser | null>
 
     return convertFirestoreToJWSUser(userDoc.id, userData);
   } catch (error) {
+      // Error handled silently
     if (error instanceof Error) {
       throw error;
     }
@@ -179,7 +236,8 @@ export const getUsers = async (): Promise<JWSUser[]> => {
     });
 
     return users;
-  } catch {
+  } catch (error) {
+      // Error handled silently
     throw new Error('사용자 목록 조회 중 오류가 발생했습니다.');
   }
 };
@@ -191,13 +249,59 @@ export const getUsers = async (): Promise<JWSUser[]> => {
  */
 export const createUser = async (userData: Partial<JWSUser>): Promise<{ uid: string; defaultPassword: string }> => {
   try {
-    // Get current user's ID token for authentication
+    // supplier 역할인 경우 Firestore에만 저장 (Firebase Auth 사용 안 함)
+    if (userData.role === 'supplier') {
+      const mobile = userData.mobile || '';
+      const defaultPassword = mobile.slice(-4) + mobile.slice(-4); // 뒷자리 4자리 2번 반복
+
+      // 문서 ID를 mobile.role 형식으로 생성 (예: 01012345678.supplier)
+      const docId = `${mobile}.supplier`;
+
+      // Firestore에 직접 저장
+      const userDocData: Record<string, unknown> = {
+        name: userData.name,
+        mobile: mobile,
+        role: 'supplier',
+        isActive: userData.isActive ?? true,
+        requiresPasswordChange: false, // supplier는 로그인 안 함
+        createdAt: serverTimestamp(),
+        lastLogin: null,
+        passwordChangedAt: null,
+        linkedSuppliers: userData.linkedSuppliers || []
+      };
+
+      await setDoc(doc(db, 'users', docId), userDocData);
+
+      return {
+        uid: docId,
+        defaultPassword: defaultPassword
+      };
+    }
+
+    // customer, admin, staff 역할은 Cloud Function 사용
     const user = auth.currentUser;
     if (!user) {
       throw new Error('Authentication required');
     }
 
     const idToken = await user.getIdToken();
+
+    // Cloud Function이 기대하는 필드만 추출
+    const requestData: {
+      name: string;
+      mobile: string;
+      role: 'admin' | 'staff' | 'customer';
+      linkedCustomers?: string[];
+      isActive?: boolean;
+      requiresPasswordChange?: boolean;
+    } = {
+      name: userData.name || '',
+      mobile: userData.mobile || '',
+      role: userData.role || 'staff',
+      linkedCustomers: userData.linkedCustomers,
+      isActive: userData.isActive,
+      requiresPasswordChange: userData.requiresPasswordChange
+    };
 
     // Make direct HTTP request to the Cloud Function
     const response = await fetch('https://asia-northeast3-jinhyun-wholesale.cloudfunctions.net/createUserAccount', {
@@ -206,17 +310,25 @@ export const createUser = async (userData: Partial<JWSUser>): Promise<{ uid: str
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${idToken}`
       },
-      body: JSON.stringify(userData)
+      body: JSON.stringify(requestData)
     });
 
     const data = await response.json();
 
     if (!response.ok || !data.success) {
+      console.error('createUser 실패:', {
+        status: response.status,
+        statusText: response.statusText,
+        data,
+        requestData
+      });
       throw new Error(data.error || '사용자 생성에 실패했습니다.');
     }
 
     return { uid: data.uid || '', defaultPassword: data.defaultPassword || '' };
   } catch (error) {
+      // Error handled silently
+    console.error('createUser 에러:', error);
     throw new Error(error instanceof Error ? error.message : '사용자 생성 중 오류가 발생했습니다.');
   }
 };
@@ -235,7 +347,7 @@ export const updateUser = async (uid: string, updateData: Partial<JWSUser>): Pro
 
     // Date 타입이 아닌 필드들만 복사
     const allowedFields = ['name', 'mobile', 'role', 'email', 'isActive',
-                          'linkedCustomers', 'requiresPasswordChange', 'smsRecipientInfo'];
+                          'linkedCustomers', 'linkedSuppliers', 'requiresPasswordChange', 'smsRecipientInfo'];
 
     for (const [key, value] of Object.entries(updateData)) {
       if (allowedFields.includes(key) && value !== undefined) {
@@ -246,8 +358,9 @@ export const updateUser = async (uid: string, updateData: Partial<JWSUser>): Pro
     // updatedAt은 serverTimestamp로 설정
     firestoreData.updatedAt = serverTimestamp();
 
-    await updateDoc(userRef, firestoreData as Record<string, any>);
+    await updateDoc(userRef, firestoreData as Record<string, unknown>);
   } catch (error) {
+      // Error handled silently
     console.error('updateUser error:', error);
     throw new Error('사용자 정보 수정 중 오류가 발생했습니다.');
   }
@@ -266,7 +379,8 @@ export const resetUserPassword = async (uid: string): Promise<void> => {
     if (!data.success) {
       throw new Error(data.error || '비밀번호 초기화에 실패했습니다.');
     }
-  } catch {
+  } catch (error) {
+      // Error handled silently
     throw new Error('비밀번호 초기화 중 오류가 발생했습니다.');
   }
 };
@@ -285,6 +399,7 @@ export const deleteUserAccount = async (uid: string): Promise<void> => {
       throw new Error(data.error || '사용자 삭제에 실패했습니다.');
     }
   } catch (error) {
+      // Error handled silently
     throw new Error(error instanceof Error ? error.message : '사용자 삭제 중 오류가 발생했습니다.');
   }
 };
@@ -293,7 +408,7 @@ export const deleteUserAccount = async (uid: string): Promise<void> => {
 /**
  * 사용자에게 고객사 추가 (색인 관리)
  * @param uid 사용자 ID
- * @param businessNumber 추가할 고객사 사업자등록번호 (하이픈 제거된 형태)
+ * @param businessNumber 추가할 고객사 사업자등록번호 (하이픈 포함/미포함 모두 지원)
  */
 export const addCustomerToUser = async (uid: string, businessNumber: string): Promise<void> => {
   try {
@@ -307,8 +422,8 @@ export const addCustomerToUser = async (uid: string, businessNumber: string): Pr
     const userData = userDoc.data() as JWSUser;
     const currentBusinessNumbers = userData.linkedCustomers || [];
 
-    // 정규화된 사업자번호
-    const normalizedBusinessNumber = normalizeNumber(businessNumber) as NormalizedBusinessNumber;
+    // 정규화된 사업자번호 (하이픈 포함 형태)
+    const normalizedBusinessNumber = normalizeBusinessNumber(businessNumber) as NormalizedBusinessNumber;
 
     // 중복 확인
     if (currentBusinessNumbers.includes(normalizedBusinessNumber)) {
@@ -322,15 +437,62 @@ export const addCustomerToUser = async (uid: string, businessNumber: string): Pr
       linkedCustomers: updatedBusinessNumbers,
       updatedAt: serverTimestamp()
     });
-  } catch {
+  } catch (error) {
+      // Error handled silently
+    console.error('addCustomerToUser 에러:', error);
+    if (error instanceof Error) {
+      throw new Error(`고객사를 사용자에 연결하는 중 오류: ${error.message}`);
+    }
     throw new Error('고객사를 사용자에 연결하는 중 오류가 발생했습니다.');
+  }
+};
+
+/**
+ * 사용자에게서 고객사 제거
+ * @param uid 사용자 ID
+ * @param businessNumber 제거할 고객사 사업자등록번호 (하이픈 포함/미포함 모두 지원)
+ */
+export const removeCustomerFromUser = async (uid: string, businessNumber: string): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userDoc = await getDoc(userRef);
+
+    if (!userDoc.exists()) {
+      return;
+    }
+
+    const userData = userDoc.data() as JWSUser;
+    const currentBusinessNumbers = userData.linkedCustomers || [];
+
+    // 정규화된 사업자번호 (하이픈 포함 형태)
+    const normalizedBusinessNumber = normalizeBusinessNumber(businessNumber) as NormalizedBusinessNumber;
+
+    // 고객사가 없으면 종료
+    if (!currentBusinessNumbers.includes(normalizedBusinessNumber)) {
+      return;
+    }
+
+    // 고객사 제거
+    const updatedBusinessNumbers = currentBusinessNumbers.filter(bn => bn !== normalizedBusinessNumber);
+
+    await updateDoc(userRef, {
+      linkedCustomers: updatedBusinessNumbers,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+      // Error handled silently
+    console.error('removeCustomerFromUser 에러:', error);
+    if (error instanceof Error) {
+      throw new Error(`고객사를 사용자에서 제거하는 중 오류: ${error.message}`);
+    }
+    throw new Error('고객사를 사용자에서 제거하는 중 오류가 발생했습니다.');
   }
 };
 
 /**
  * 고객사 SMS 수신자용 사용자 생성
  * @param recipient SMS 수신자 정보
- * @param businessNumbers 연결할 고객사 사업자등록번호 목록
+ * @param businessNumbers 연결할 고객사 사업자등록번호 목록 (하이픈 포함/미포함 모두 지원)
  * @returns 생성된 사용자 정보
  */
 export const createCustomerUser = async (
@@ -342,15 +504,104 @@ export const createCustomerUser = async (
       name: recipient.name,
       mobile: normalizeNumber(recipient.mobile) as NormalizedMobile,
       role: 'customer',
-      linkedCustomers: businessNumbers.map(bn => normalizeNumber(bn) as NormalizedBusinessNumber),
+      linkedCustomers: businessNumbers.map(bn => normalizeBusinessNumber(bn) as NormalizedBusinessNumber),
       isActive: true, // SMS 수신자는 즉시 활성화
       requiresPasswordChange: true // 첫 로그인 시 비밀번호 변경 필수
     };
 
     const result = await createUser(userData);
     return result;
-  } catch {
+  } catch (error) {
+      // Error handled silently
+    console.error('createCustomerUser 에러:', error);
+    if (error instanceof Error) {
+      throw new Error(`SMS 수신자 사용자 생성 중 오류: ${error.message}`);
+    }
     throw new Error('SMS 수신자 사용자 생성 중 오류가 발생했습니다.');
+  }
+};
+
+/**
+ * 사용자에게 공급사 추가
+ * @param uid 사용자 ID
+ * @param businessNumber 추가할 공급사 사업자등록번호 (하이픈 포함/미포함 모두 지원)
+ */
+export const addSupplierToUser = async (uid: string, businessNumber: string): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userDoc = await getDoc(userRef);
+
+    if (!userDoc.exists()) {
+      throw new Error('사용자를 찾을 수 없습니다.');
+    }
+
+    const userData = userDoc.data() as JWSUser;
+    const currentBusinessNumbers = userData.linkedSuppliers || [];
+
+    // 정규화된 사업자번호 (하이픈 포함 형태)
+    const normalizedBusinessNumber = normalizeBusinessNumber(businessNumber) as NormalizedBusinessNumber;
+
+    // 중복 확인
+    if (currentBusinessNumbers.includes(normalizedBusinessNumber)) {
+      return;
+    }
+
+    // 공급사 추가
+    const updatedBusinessNumbers = [...currentBusinessNumbers, normalizedBusinessNumber];
+
+    await updateDoc(userRef, {
+      linkedSuppliers: updatedBusinessNumbers,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+      // Error handled silently
+    console.error('addSupplierToUser 에러:', error);
+    if (error instanceof Error) {
+      throw new Error(`공급사를 사용자에 연결하는 중 오류: ${error.message}`);
+    }
+    throw new Error('공급사를 사용자에 연결하는 중 오류가 발생했습니다.');
+  }
+};
+
+/**
+ * 사용자에게서 공급사 제거
+ * @param uid 사용자 ID
+ * @param businessNumber 제거할 공급사 사업자등록번호 (하이픈 포함/미포함 모두 지원)
+ */
+export const removeSupplierFromUser = async (uid: string, businessNumber: string): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userDoc = await getDoc(userRef);
+
+    if (!userDoc.exists()) {
+      return;
+    }
+
+    const userData = userDoc.data() as JWSUser;
+    const currentBusinessNumbers = userData.linkedSuppliers || [];
+
+    // 정규화된 사업자번호 (하이픈 포함 형태)
+    const normalizedBusinessNumber = normalizeBusinessNumber(businessNumber) as NormalizedBusinessNumber;
+
+    // 공급사가 없으면 종료
+    if (!currentBusinessNumbers.includes(normalizedBusinessNumber)) {
+      return;
+    }
+
+    // 공급사 제거
+    const updatedBusinessNumbers = currentBusinessNumbers.filter(bn => bn !== normalizedBusinessNumber);
+
+    await updateDoc(userRef, {
+      linkedSuppliers: updatedBusinessNumbers,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+      // Error handled silently
+    console.error('removeSupplierFromUser 에러:', error);
+    if (error instanceof Error) {
+      throw new Error(`공급사를 사용자에서 제거하는 중 오류: ${error.message}`);
+    }
+    throw new Error('공급사를 사용자에서 제거하는 중 오류가 발생했습니다.');
   }
 };
 
@@ -379,7 +630,119 @@ export const getUsersByCustomer = async (businessNumber: string): Promise<JWSUse
     })) as JWSUser[];
 
     return users.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  } catch {
+  } catch (error) {
+      // Error handled silently
     throw new Error('고객사에 연결된 사용자 목록을 조회할 수 없습니다.');
   }
 };
+
+/**
+ * 특정 공급사에 연결된 사용자 목록 조회
+ * @param businessNumber 공급사 사업자등록번호 (하이픈 제거된 형태)
+ * @returns 연결된 사용자 목록
+ */
+export const getUsersBySupplier = async (businessNumber: string): Promise<JWSUser[]> => {
+  try {
+    const usersCollection = collection(db, 'users');
+
+    // linkedSuppliers 배열에 해당 사업자번호가 포함된 사용자 조회
+    const q = query(
+      usersCollection,
+      where('linkedSuppliers', 'array-contains', businessNumber),
+      where('role', '==', 'supplier')
+    );
+
+    const snapshot = await getDocs(q);
+    const users = snapshot.docs.map(doc => ({
+      uid: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate() || new Date(),
+      lastLogin: doc.data().lastLogin?.toDate() || null
+    })) as JWSUser[];
+
+    return users.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  } catch (error) {
+      // Error handled silently
+    throw new Error('공급사에 연결된 사용자 목록을 조회할 수 없습니다.');
+  }
+};
+
+/**
+ * 사용자가 삭제 가능한지 확인
+ * @param userId 사용자 ID
+ * @returns 삭제 가능 여부 및 사유
+ */
+export const canDeleteUser = async (userId: string): Promise<{
+  canDelete: boolean;
+  reason?: string;
+  linkedCompaniesCount?: number;
+}> => {
+  try {
+    const user = await getUserById(userId);
+    if (!user) {
+      return { canDelete: false, reason: '사용자를 찾을 수 없습니다.' };
+    }
+
+    const linkedCustomersCount = user.linkedCustomers?.length || 0;
+    const linkedSuppliersCount = user.linkedSuppliers?.length || 0;
+    const totalLinkedCount = linkedCustomersCount + linkedSuppliersCount;
+
+    // 연결된 고객사나 공급사가 있으면 삭제 불가
+    if (totalLinkedCount > 0) {
+      const reasons = [];
+      if (linkedCustomersCount > 0) reasons.push(`${linkedCustomersCount}개의 고객사`);
+      if (linkedSuppliersCount > 0) reasons.push(`${linkedSuppliersCount}개의 공급사`);
+
+      return {
+        canDelete: false,
+        reason: `연결된 ${reasons.join(', ')}가 있습니다.`,
+        linkedCompaniesCount: totalLinkedCount
+      };
+    }
+
+    return { canDelete: true };
+  } catch (error) {
+      // Error handled silently
+    return {
+      canDelete: false,
+      reason: error instanceof Error ? error.message : '사용자 확인 중 오류가 발생했습니다.'
+    };
+  }
+};
+
+/**
+ * 사용자 삭제 (연결된 고객사가 없는 경우에만 가능)
+ * @param userId 사용자 ID
+ * @throws 연결된 고객사가 있거나 삭제 실패 시 에러
+ */
+export const deleteUser = async (userId: string): Promise<void> => {
+  try {
+    // 삭제 가능 여부 확인
+    const checkResult = await canDeleteUser(userId);
+
+    if (!checkResult.canDelete) {
+      if (checkResult.linkedCompaniesCount && checkResult.linkedCompaniesCount > 0) {
+        throw new Error(
+          `이 사용자는 ${checkResult.linkedCompaniesCount}개의 고객사에 연결되어 있어 삭제할 수 없습니다. ` +
+          '먼저 모든 고객사 연결을 해제해주세요.'
+        );
+      }
+      throw new Error(checkResult.reason || '사용자를 삭제할 수 없습니다.');
+    }
+
+    // Firebase Auth 및 Firestore에서 삭제
+    await deleteUserAccount(userId);
+  } catch (error) {
+      // Error handled silently
+    console.error('deleteUser 에러:', error);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('사용자 삭제 중 오류가 발생했습니다.');
+  }
+};
+
+/**
+ * 전체 사용자 목록 조회 (getUsers의 alias)
+ */
+export const getAllUsers = getUsers;

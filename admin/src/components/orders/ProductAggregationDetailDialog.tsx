@@ -4,7 +4,7 @@
  * 주요 내용: 상품 집계 상세 다이얼로그
  */
 
-import { useState, useEffect } from 'react';
+import React from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -34,7 +34,7 @@ interface ProductAggregationDetail {
   orders: Array<{
     orderNumber: string;
     customerName: string;
-    orderDate: any;
+    orderDate: unknown;
     quantity: number;
     amount: number;
     orderPhase: 'regular' | 'additional';
@@ -86,9 +86,9 @@ const ProductAggregationDetailDialog = ({
       minWidth: 100,
       align: 'center',
       headerAlign: 'center',
-      valueFormatter: (value: any) => {
+      valueFormatter: (value: unknown) => {
         if (!value) return '';
-        const date = value.toDate ? value.toDate() : new Date(value);
+        const date = (value as { toDate?: () => Date }).toDate ? (value as { toDate: () => Date }).toDate() : new Date(value as string | number | Date);
         return date.toLocaleString('ko-KR', {
           month: '2-digit',
           day: '2-digit',
@@ -111,7 +111,7 @@ const ProductAggregationDetailDialog = ({
       minWidth: 80,
       align: 'right',
       headerAlign: 'right',
-      valueFormatter: (value: any) => `${value?.toLocaleString()}개`
+      valueFormatter: (value: unknown) => `${(value as number)?.toLocaleString()}개`
     },
     {
       field: 'amount',
@@ -120,7 +120,7 @@ const ProductAggregationDetailDialog = ({
       minWidth: 100,
       align: 'right',
       headerAlign: 'right',
-      valueFormatter: (value: any) => value?.toLocaleString()
+      valueFormatter: (value: unknown) => (value as number)?.toLocaleString()
     }
   ];
 
