@@ -419,7 +419,7 @@ const DailyFoodPurchaseOrdersPage = () => {
     },
     {
       field: 'smsSuccess',
-      headerName: 'SMS결과',
+      headerName: 'SMS 발송',
       flex: 0.10,
       minWidth: 90,
       align: 'center',
@@ -430,9 +430,9 @@ const DailyFoodPurchaseOrdersPage = () => {
         if (smsSuccess === undefined || smsSuccess === null) {
           return <Chip label="미발송" color="default" size="small" />;
         } else if (smsSuccess === true) {
-          return <Chip label="발송완료" color="success" size="small" />;
+          return <Chip label="성공" color="success" size="small" />;
         } else {
-          return <Chip label="발송실패" color="error" size="small" />;
+          return <Chip label="실패" color="error" size="small" />;
         }
       }
     },
@@ -757,7 +757,7 @@ const DailyFoodPurchaseOrdersPage = () => {
                 },
                 {
                   field: 'primaryStatus',
-                  headerName: 'SMS결과',
+                  headerName: 'SMS 전송',
                   flex: 0.13,
                   minWidth: 100,
                   align: 'center',
@@ -791,7 +791,7 @@ const DailyFoodPurchaseOrdersPage = () => {
                 },
                 {
                   field: 'secondaryStatus',
-                  headerName: 'SMS결과',
+                  headerName: 'SMS 전송',
                   flex: 0.13,
                   minWidth: 100,
                   align: 'center',

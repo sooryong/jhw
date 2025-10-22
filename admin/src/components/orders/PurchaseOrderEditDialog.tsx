@@ -489,10 +489,10 @@ const PurchaseOrderEditDialog = ({
                 </Typography>
               </Box>
 
-              {/* SMS결과 */}
+              {/* SMS 전송 */}
               <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  SMS결과
+                  SMS 전송
                 </Typography>
                 {getSmsResultChip()}
               </Box>
@@ -597,7 +597,7 @@ const PurchaseOrderEditDialog = ({
                 />
                 {smsResults.primary && (
                   <Chip
-                    label={smsResults.primary.status === 'success' ? '발송 성공' : '발송 실패'}
+                    label={smsResults.primary.status === 'success' ? '성공' : '실패'}
                     color={smsResults.primary.status === 'success' ? 'success' : 'error'}
                     size="small"
                   />
@@ -629,7 +629,7 @@ const PurchaseOrderEditDialog = ({
                 />
                 {smsResults.secondary && (
                   <Chip
-                    label={smsResults.secondary.status === 'success' ? '발송 성공' : '발송 실패'}
+                    label={smsResults.secondary.status === 'success' ? '성공' : '실패'}
                     color={smsResults.secondary.status === 'success' ? 'success' : 'error'}
                     size="small"
                   />
