@@ -2,7 +2,7 @@
 
 **버전**: v0.9.7
 **작성일**: 2025-10-12
-**최종 업데이트**: 2025-10-19
+**최종 업데이트**: 2025-10-23
 **프로젝트명**: JHW Shop System
 **Firebase 프로젝트**: jinhyun-wholesale
 **배포 URL**: https://jinhyun-shop.web.app
@@ -141,6 +141,7 @@ JHW 쇼핑몰은 진현유통의 고객사가 상품을 주문할 수 있는 모
 │   │   └── CustomerContext.tsx
 │   ├── services/            # Firebase 서비스
 │   │   ├── customerService.ts
+│   │   ├── customerFavoriteService.ts
 │   │   ├── productService.ts
 │   │   ├── saleOrderService.ts
 │   │   └── userService.ts
@@ -953,6 +954,8 @@ Shop 앱은 Admin 앱과 동일한 타입 정의 사용:
 - `productService.ts`: 상품 조회
 - `saleOrderService.ts`: 주문 생성/조회/취소
 - `customerService.ts`: 고객사 조회
+- `customerFavoriteService.ts`: 고객사 즐겨찾기 상품 관리
+  - `getActiveFavorites()`: 활성 즐겨찾기 목록 조회
 - `userService.ts`: 사용자 관리
 
 ### C. UI 컴포넌트

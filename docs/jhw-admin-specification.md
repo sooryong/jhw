@@ -2,7 +2,7 @@
 
 **버전**: v0.9.5
 **작성일**: 2025-10-12
-**최종 업데이트**: 2025-10-22
+**최종 업데이트**: 2025-10-23
 **프로젝트명**: JHW Platform Admin System
 **Firebase 프로젝트**: jinhyun-wholesale
 **배포 URL**: https://jinhyun-admin.web.app
@@ -471,13 +471,30 @@ interface Customer {
   discountRate: number;                      // 기본 할인율 (%)
   currentBalance: number;                    // 현재 미수금
 
-  // 특가/즐겨찾기
+  // 특가
   specialPrices: SpecialPrice[];             // 고객사별 특가
-  favoriteProducts: FavoriteProduct[];       // 즐겨찾기 상품
+  // 즐겨찾기는 서브컬렉션으로 분리: customers/{customerId}/favoriteProducts
 
   isActive: boolean;                         // 활성 상태
   createdAt: Timestamp;                      // 생성일시
   updatedAt: Timestamp;                      // 수정일시
+}
+```
+
+**서브컬렉션: customers/{customerId}/favoriteProducts**
+**문서 ID**: productId
+
+```typescript
+interface CustomerFavoriteProduct {
+  productId: string;                         // 상품 ID (문서 ID와 동일)
+  productName: string;                       // 상품명 (캐시)
+  productImage?: string;                     // 상품 이미지 URL
+  specification?: string;                    // 상품 규격 (캐시)
+  displayOrder: number;                      // 표시 순서 (1부터 시작)
+  isActive: boolean;                         // 활성화 여부
+  addedAt: Timestamp;                        // 즐겨찾기 추가일시
+  updatedAt: Timestamp;                      // 마지막 수정일시
+  addedBy?: string;                          // 추가한 사용자 UID
 }
 ```
 
@@ -1768,6 +1785,15 @@ interface SubPageHeaderProps {
   - `linkContactToSupplier()`: 공급사에 사용자 담당자 연결
   - `unlinkContactFromSupplier()`: 공급사에서 사용자 연결 해제
 - `customerService.ts`: 고객사 관리
+- `customerFavoriteService.ts`: 고객사 즐겨찾기 상품 관리 (서브컬렉션)
+  - `addFavorite()`: 즐겨찾기 상품 추가
+  - `removeFavorite()`: 즐겨찾기 상품 제거
+  - `updateFavorite()`: 즐겨찾기 속성 업데이트
+  - `listFavorites()`: 즐겨찾기 목록 조회
+  - `getActiveFavorites()`: Shop 전용 활성 즐겨찾기 조회
+  - `reorderFavorites()`: 표시 순서 일괄 변경
+  - `toggleFavorite()`: 즐겨찾기 토글 (추가/제거)
+  - `isFavorite()`: 즐겨찾기 여부 확인
 - `supplierService.ts`: 공급사 관리
 - `productService.ts`: 상품 관리
 - `saleOrderService.ts`: 매출주문 관리
