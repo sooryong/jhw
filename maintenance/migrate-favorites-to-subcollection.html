@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>즐겨찾기 마이그레이션</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .info {
+            background: #cfe2ff;
+            border: 2px solid #0d6efd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .success {
+            background: #d1e7dd;
+            border: 2px solid #198754;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .danger {
+            background: #dc3545;
+        }
+        .danger:hover {
+            background: #c82333;
+        }
+        #progress {
+            margin: 20px 0;
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        #log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            display: none;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+        }
+        .log-info { color: #0d6efd; }
+        .log-success { color: #198754; font-weight: bold; }
+        .log-error { color: #dc3545; font-weight: bold; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #4CAF50;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 즐겨찾기 상품 마이그레이션</h1>
+
+        <div class="info">
+            <strong>ℹ️ 마이그레이션 정보</strong>
+            <p>이 스크립트는 고객사 문서의 favoriteProducts 배열을 서브컬렉션으로 이동합니다.</p>
+            <ul>
+                <li><strong>원본</strong>: customers/{customerId}.favoriteProducts[]</li>
+                <li><strong>대상</strong>: customers/{customerId}/favoriteProducts/{productId}</li>
+            </ul>
+        </div>
+
+        <div class="warning">
+            <strong>⚠️ 주의사항</strong>
+            <ol>
+                <li>마이그레이션 전에 반드시 데이터베이스 백업을 수행하세요.</li>
+                <li>마이그레이션 중에는 시스템 사용을 중단하세요.</li>
+                <li>마이그레이션 완료 후 원본 데이터는 자동으로 삭제되지 않습니다.</li>
+                <li>검증 완료 후 "원본 데이터 삭제" 버튼을 눌러 정리하세요.</li>
+            </ol>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalCustomers">0</div>
+                <div class="stat-label">총 고객사</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="withFavorites">0</div>
+                <div class="stat-label">즐겨찾기 있는 고객사</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalFavorites">0</div>
+                <div class="stat-label">총 즐겨찾기 수</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="migrated">0</div>
+                <div class="stat-label">마이그레이션 완료</div>
+            </div>
+        </div>
+
+        <div>
+            <button onclick="analyzeData()" id="analyzeBtn">1️⃣ 데이터 분석</button>
+            <button onclick="startMigration()" id="migrateBtn" disabled>2️⃣ 마이그레이션 시작</button>
+            <button onclick="verifyMigration()" id="verifyBtn" disabled>3️⃣ 검증</button>
+            <button onclick="cleanupOriginal()" id="cleanupBtn" disabled class="danger">4️⃣ 원본 데이터 삭제</button>
+        </div>
+
+        <div id="progress">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill">0%</div>
+            </div>
+        </div>
+
+        <div id="log"></div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import {
+            getFirestore,
+            collection,
+            getDocs,
+            doc,
+            getDoc,
+            setDoc,
+            updateDoc,
+            deleteField,
+            writeBatch,
+            Timestamp
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        // Firebase 설정 (admin .firebaserc에서 가져온 설정)
+        const firebaseConfig = {
+            apiKey: "AIzaSyDf6RdPU7-lLXO_G8tBb-vGMo0RHnR0yts",
+            authDomain: "jinhyun-wholesale.firebaseapp.com",
+            projectId: "jinhyun-wholesale",
+            storageBucket: "jinhyun-wholesale.firebasestorage.app",
+            messagingSenderId: "767842862903",
+            appId: "1:767842862903:web:a4b74d47b85f4b51b65f04",
+            measurementId: "G-X5Q7WM2SV7"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        window.db = db;
+        window.migrationData = {
+            customers: [],
+            totalFavorites: 0,
+            migratedCount: 0
+        };
+
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            logEl.style.display = 'block';
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(message);
+        }
+
+        function updateProgress(current, total) {
+            const percent = Math.round((current / total) * 100);
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressFill').textContent = percent + '%';
+        }
+
+        window.analyzeData = async function() {
+            const btn = document.getElementById('analyzeBtn');
+            btn.disabled = true;
+            log('데이터 분석 시작...', 'info');
+
+            try {
+                const customersSnapshot = await getDocs(collection(db, 'customers'));
+                let totalCustomers = 0;
+                let withFavorites = 0;
+                let totalFavorites = 0;
+                const customersWithFavorites = [];
+
+                customersSnapshot.forEach(doc => {
+                    totalCustomers++;
+                    const data = doc.data();
+
+                    if (data.favoriteProducts && Array.isArray(data.favoriteProducts) && data.favoriteProducts.length > 0) {
+                        withFavorites++;
+                        totalFavorites += data.favoriteProducts.length;
+                        customersWithFavorites.push({
+                            id: doc.id,
+                            data: data,
+                            favorites: data.favoriteProducts
+                        });
+                        log(`${data.businessName}: ${data.favoriteProducts.length}개 즐겨찾기`, 'info');
+                    }
+                });
+
+                window.migrationData.customers = customersWithFavorites;
+                window.migrationData.totalFavorites = totalFavorites;
+
+                document.getElementById('totalCustomers').textContent = totalCustomers;
+                document.getElementById('withFavorites').textContent = withFavorites;
+                document.getElementById('totalFavorites').textContent = totalFavorites;
+
+                log(`분석 완료: 고객사 ${totalCustomers}개 중 ${withFavorites}개가 즐겨찾기 보유`, 'success');
+                document.getElementById('migrateBtn').disabled = withFavorites === 0;
+            } catch (error) {
+                log(`분석 실패: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        window.startMigration = async function() {
+            if (!confirm('마이그레이션을 시작하시겠습니까?\n\n이 작업은 취소할 수 없습니다.')) {
+                return;
+            }
+
+            const btn = document.getElementById('migrateBtn');
+            btn.disabled = true;
+            document.getElementById('progress').style.display = 'block';
+            log('마이그레이션 시작...', 'info');
+
+            try {
+                const { customers, totalFavorites } = window.migrationData;
+                let migratedCount = 0;
+
+                for (let i = 0; i < customers.length; i++) {
+                    const customer = customers[i];
+                    log(`[${i + 1}/${customers.length}] ${customer.data.businessName} 처리 중...`, 'info');
+
+                    for (const favorite of customer.favorites) {
+                        try {
+                            const favoriteData = {
+                                productId: favorite.productId,
+                                productName: favorite.productName,
+                                productImage: favorite.productImage || null,
+                                specification: favorite.specification || null,
+                                displayOrder: favorite.displayOrder || 1,
+                                isActive: favorite.isActive !== undefined ? favorite.isActive : true,
+                                addedAt: Timestamp.now(),
+                                updatedAt: Timestamp.now(),
+                                addedBy: 'migration'
+                            };
+
+                            await setDoc(
+                                doc(db, `customers/${customer.id}/favoriteProducts/${favorite.productId}`),
+                                favoriteData
+                            );
+
+                            migratedCount++;
+                            updateProgress(migratedCount, totalFavorites);
+                        } catch (error) {
+                            log(`  ❌ ${favorite.productName} 마이그레이션 실패: ${error.message}`, 'error');
+                        }
+                    }
+
+                    log(`  ✅ ${customer.data.businessName} 완료 (${customer.favorites.length}개)`, 'success');
+                }
+
+                window.migrationData.migratedCount = migratedCount;
+                document.getElementById('migrated').textContent = migratedCount;
+
+                log(`마이그레이션 완료: ${migratedCount}/${totalFavorites}개 성공`, 'success');
+                document.getElementById('verifyBtn').disabled = false;
+            } catch (error) {
+                log(`마이그레이션 실패: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        window.verifyMigration = async function() {
+            const btn = document.getElementById('verifyBtn');
+            btn.disabled = true;
+            log('검증 시작...', 'info');
+
+            try {
+                const { customers } = window.migrationData;
+                let verified = 0;
+                let errors = 0;
+
+                for (const customer of customers) {
+                    const subcollectionSnapshot = await getDocs(
+                        collection(db, `customers/${customer.id}/favoriteProducts`)
+                    );
+
+                    if (subcollectionSnapshot.size !== customer.favorites.length) {
+                        log(`  ⚠️ ${customer.data.businessName}: 개수 불일치 (원본: ${customer.favorites.length}, 마이그레이션: ${subcollectionSnapshot.size})`, 'error');
+                        errors++;
+                    } else {
+                        log(`  ✅ ${customer.data.businessName}: 검증 성공`, 'success');
+                        verified++;
+                    }
+                }
+
+                if (errors === 0) {
+                    log(`검증 완료: 모든 데이터가 정상적으로 마이그레이션되었습니다.`, 'success');
+                    document.getElementById('cleanupBtn').disabled = false;
+                } else {
+                    log(`검증 완료: ${errors}개 고객사에서 오류 발견`, 'error');
+                }
+            } catch (error) {
+                log(`검증 실패: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        window.cleanupOriginal = async function() {
+            if (!confirm('원본 데이터를 삭제하시겠습니까?\n\n검증이 완료되었는지 확인하세요.\n이 작업은 취소할 수 없습니다!')) {
+                return;
+            }
+
+            if (!confirm('정말로 삭제하시겠습니까?\n\n마지막 확인입니다!')) {
+                return;
+            }
+
+            const btn = document.getElementById('cleanupBtn');
+            btn.disabled = true;
+            log('원본 데이터 삭제 시작...', 'info');
+
+            try {
+                const { customers } = window.migrationData;
+
+                for (const customer of customers) {
+                    await updateDoc(doc(db, 'customers', customer.id), {
+                        favoriteProducts: deleteField()
+                    });
+                    log(`  ✅ ${customer.data.businessName}: favoriteProducts 필드 삭제`, 'success');
+                }
+
+                log('원본 데이터 삭제 완료!', 'success');
+            } catch (error) {
+                log(`삭제 실패: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        window.log = log;
+    </script>
+</body>
+</html>

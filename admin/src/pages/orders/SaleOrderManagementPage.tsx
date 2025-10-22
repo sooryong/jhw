@@ -204,9 +204,11 @@ const SaleOrderManagementPage = () => {
       align: 'center',
       headerAlign: 'center',
       renderCell: (params) => {
-        const statusMap: Record<string, { label: string; color: 'default' | 'primary' | 'success' }> = {
+        const statusMap: Record<string, { label: string; color: 'default' | 'primary' | 'success' | 'warning' | 'error' }> = {
           placed: { label: '접수', color: 'default' },
           confirmed: { label: '확정', color: 'primary' },
+          pended: { label: '보류', color: 'warning' },
+          rejected: { label: '거절', color: 'error' },
           completed: { label: '완료', color: 'success' }
         };
         const status = statusMap[params.value] || { label: params.value, color: 'default' };

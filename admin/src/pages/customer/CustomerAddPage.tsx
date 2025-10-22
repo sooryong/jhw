@@ -70,7 +70,7 @@ const CustomerAddPage: React.FC = () => {
 
     // 새로운 필드들 (초기값)
     specialPrices: [],
-    favoriteProducts: [],
+    // favoriteProducts는 서브컬렉션으로 분리됨
 
     // 기본값 설정 (항상 활성)
     isActive: true,
@@ -306,7 +306,7 @@ const CustomerAddPage: React.FC = () => {
       customerType: customerTypes.length > 0 ? customerTypes[0] : '',
       discountRate: 0,
       specialPrices: [],
-      favoriteProducts: [],
+      // favoriteProducts는 서브컬렉션으로 분리됨
       isActive: true,
       currentBalance: 0
     });

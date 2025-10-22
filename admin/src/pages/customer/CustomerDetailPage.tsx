@@ -162,8 +162,8 @@ const CustomerDetailPage: React.FC = () => {
         customerType: customerData.customerType,
         discountRate: customerData.discountRate,
         currentBalance: customerData.currentBalance || 0,
-        specialPrices: customerData.specialPrices || [],
-        favoriteProducts: customerData.favoriteProducts || [],
+        specialPrices: customerData.specialPrices || []
+        // favoriteProducts는 서브컬렉션으로 분리됨
       };
 
       setSpecialPrices(customerData.specialPrices || []);

@@ -329,6 +329,8 @@ const DailyFoodCustomerOrdersPage = () => {
         const statusMap: Record<string, { label: string }> = {
           placed: { label: '접수' },
           confirmed: { label: '확정' },
+          pended: { label: '보류' },
+          rejected: { label: '거절' },
           completed: { label: '완료' }
         };
         const status = statusMap[params.value] || { label: params.value };

@@ -32,6 +32,7 @@ export interface SpecialPrice {
 }
 
 // 즐겨찾기 상품 정보
+// @deprecated 서브컬렉션으로 분리됨. customerFavorite.ts의 CustomerFavoriteProduct 사용 권장
 export interface FavoriteProduct {
   productId: string;             // 상품 ID
   productName: string;           // 상품명 (캐시)
@@ -111,7 +112,7 @@ export interface Customer extends BaseCompanyCore {
 
   // 새로운 필드들
   specialPrices: SpecialPrice[]; // 고객사별 특가 상품
-  favoriteProducts: FavoriteProduct[]; // 즐겨찾기 상품
+  // favoriteProducts는 서브컬렉션으로 분리됨: customers/{customerId}/favoriteProducts
 }
 
 // 고객사 정보 (표시용)
@@ -120,7 +121,7 @@ export interface CustomerDisplay extends BaseCompanyCoreDisplay {
   discountRate: number;
   currentBalance: number;
   specialPrices: SpecialPrice[];
-  favoriteProducts: FavoriteProduct[];
+  // favoriteProducts는 서브컬렉션으로 분리됨: customers/{customerId}/favoriteProducts
 }
 
 // 공급사 정보 (suppliers 컬렉션) - 저장용
@@ -182,7 +183,7 @@ export interface CustomerFormData {
 
   // 새로운 필드들
   specialPrices: SpecialPrice[];
-  favoriteProducts: FavoriteProduct[];
+  // favoriteProducts는 서브컬렉션으로 분리됨
 }
 
 // 공급사 생성/수정용 폼 데이터 (입력용 - 문자열 허용)

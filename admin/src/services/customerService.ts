@@ -105,8 +105,8 @@ export class CustomerService {
       customerType: formData.customerType,
       discountRate: formData.discountRate,
       currentBalance: formData.currentBalance,
-      specialPrices: formData.specialPrices || [],
-      favoriteProducts: formData.favoriteProducts || []
+      specialPrices: formData.specialPrices || []
+      // favoriteProducts는 서브컬렉션으로 분리됨
     };
 
     // 선택 필드는 값이 있을 때만 추가
@@ -414,7 +414,7 @@ export class CustomerService {
 
       // 새로운 필드들 업데이트
       if (formData.specialPrices) updateData.specialPrices = formData.specialPrices;
-      if (formData.favoriteProducts) updateData.favoriteProducts = formData.favoriteProducts;
+      // favoriteProducts는 서브컬렉션으로 분리됨
 
       await updateDoc(docRef, updateData);
 
