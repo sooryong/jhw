@@ -26,7 +26,6 @@ import {
   Container
 } from '@mui/material';
 import {
-  Message as MessageIcon,
   History as HistoryIcon,
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
@@ -244,7 +243,6 @@ const SMSCenterPage = () => {
         <Box sx={{ p: 2, pb: 1, flexShrink: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <MessageIcon sx={{ mr: 1.5, color: 'primary.main', fontSize: 28 }} />
             <Box>
               <Typography
                 variant="h4"

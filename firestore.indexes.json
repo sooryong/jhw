@@ -245,7 +245,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "confirmationStatus",
+          "fieldPath": "cutoffStatus",
           "order": "ASCENDING"
         },
         {
@@ -254,7 +254,7 @@
         },
         {
           "fieldPath": "placedAt",
-          "order": "ASCENDING"
+          "order": "DESCENDING"
         }
       ]
     },
@@ -267,8 +267,12 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "confirmationStatus",
+          "fieldPath": "cutoffStatus",
           "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "placedAt",
+          "order": "DESCENDING"
         }
       ]
     },
@@ -489,6 +493,20 @@
       ]
     },
     {
+      "collectionGroup": "customerPayments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "customerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "collectionDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "saleLedgers",
       "queryScope": "COLLECTION",
       "fields": [
@@ -559,6 +577,20 @@
       ]
     },
     {
+      "collectionGroup": "supplierPayments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "supplierId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "payoutDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "purchaseLedgers",
       "queryScope": "COLLECTION",
       "fields": [
@@ -611,6 +643,20 @@
         {
           "fieldPath": "linkedCustomers",
           "arrayConfig": "CONTAINS"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "purchaseOrders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "orderType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
         }
       ]
     }

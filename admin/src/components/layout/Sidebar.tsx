@@ -5,7 +5,7 @@
  * 관련 데이터: 메인 메뉴, 네비게이션, 사용자 정보
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -40,9 +40,21 @@ import {
   Assignment,
   MoveToInbox,
   Person,
+  ListAlt,
+  BarChart,
 } from '@mui/icons-material';
 import { useAuth } from '../../hooks/useAuth';
 import JHWLogo from '../../assets/JHWLogo';
+import type { UserRole } from '../../types/user';
+
+// 역할 우선순위 계산 (admin > staff > customer > supplier)
+const getPrimaryRole = (roles: UserRole[]): UserRole => {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('staff')) return 'staff';
+  if (roles.includes('customer')) return 'customer';
+  if (roles.includes('supplier')) return 'supplier';
+  return 'staff'; // 기본값
+};
 
 interface SidebarProps {
   open: boolean;
@@ -71,52 +83,113 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
   const [expandedMenus, setExpandedMenus] = useState<{ [key: string]: boolean }>({});
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
 
+  // 현재 경로에 따라 해당하는 메뉴를 자동으로 펼치기
+  useEffect(() => {
+    const currentPath = location.pathname;
+
+    // 경로에 따라 펼쳐야 할 메뉴 결정
+    const pathToMenuMap: { [key: string]: string } = {
+      '/orders/sale-order-status': '매출주문 접수',
+      '/orders/sale-order-management': '매출주문 접수',
+      '/orders/sale-aggregation': '매출주문 접수',
+      '/orders/daily-food-cutoff-settings': '일일식품 발주',
+      '/orders/daily-food-purchase-aggregation': '일일식품 발주',
+      '/orders/daily-food-purchase-orders': '일일식품 발주',
+      '/customers': '기준정보 관리',
+      '/suppliers': '기준정보 관리',
+      '/products': '기준정보 관리',
+      '/users': '시스템 설정',
+      '/sms': '시스템 설정',
+    };
+
+    const menuToExpand = pathToMenuMap[currentPath];
+    if (menuToExpand) {
+      setExpandedMenus((prev) => ({
+        ...prev,
+        [menuToExpand]: true,
+      }));
+    }
+  }, [location.pathname]);
+
   // 역할별 메뉴 구성
   const getMenuItems = (): MenuItem[] => {
-    const isAdminOrStaff = user?.role === 'admin' || user?.role === 'staff';
+    const isAdminOrStaff = user?.roles.includes('admin') || user?.roles.includes('staff');
 
-    const baseItems: MenuItem[] = [
-      {
-        text: '대시보드',
-        icon: <Dashboard />,
-        path: '/dashboard',
-        implemented: true,
-      },
-    ];
-
-    // admin 전용: 일일주문 확정
-    if (user?.role === 'admin') {
-      baseItems.push({
-        text: '일일주문 확정',
-        icon: <Assignment />,
-        path: '/orders/management',
-        implemented: true,
-      });
-    }
+    const baseItems: MenuItem[] = [];
 
     // admin/staff 전용 메뉴
     if (isAdminOrStaff) {
       baseItems.push(
         {
-          text: '일일주문 입고',
+          text: '매출주문 접수',
+          icon: <Assignment />,
+          implemented: true,
+          subItems: [
+            {
+              text: '접수 현황',
+              icon: <Dashboard />,
+              path: '/orders/sale-order-status',
+              implemented: true,
+            },
+            {
+              text: '주문 접수',
+              icon: <ListAlt />,
+              path: '/orders/sale-order-management',
+              implemented: true,
+            },
+            {
+              text: '상품 집계',
+              icon: <BarChart />,
+              path: '/orders/sale-aggregation',
+              implemented: true,
+            },
+          ],
+        },
+        {
+          text: '일일식품 발주',
+          icon: <LocalShipping />,
+          implemented: true,
+          subItems: [
+            {
+              text: '마감 설정',
+              icon: <Dashboard />,
+              path: '/orders/daily-food-cutoff-settings',
+              implemented: true,
+            },
+            {
+              text: '매입 집계',
+              icon: <BarChart />,
+              path: '/orders/daily-food-purchase-aggregation',
+              implemented: true,
+            },
+            {
+              text: '매입 발주',
+              icon: <ListAlt />,
+              path: '/orders/daily-food-purchase-orders',
+              implemented: true,
+            },
+          ],
+        },
+        {
+          text: '입고 관리',
           icon: <MoveToInbox />,
           path: '/orders/inbound',
           implemented: true,
         },
         {
-          text: '일일주문 출하',
+          text: '출하 관리',
           icon: <LocalShipping />,
           path: '/orders/outbound',
           implemented: true,
         },
         {
-          text: '공급사 원장 관리',
+          text: '매입원장 관리',
           icon: <Assessment />,
           path: '/ledgers/purchase',
           implemented: true,
         },
         {
-          text: '고객사 원장 관리',
+          text: '매출원장 관리',
           icon: <Assessment />,
           path: '/ledgers/sales',
           implemented: true,
@@ -124,25 +197,25 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
         {
           text: '기준정보 관리',
           icon: <BusinessIcon />,
-          implemented: user?.role === 'admin',
+          implemented: user?.roles.includes('admin'),
           subItems: [
             {
               text: '고객사 관리',
               icon: <PeopleIcon />,
               path: '/customers',
-              implemented: user?.role === 'admin',
+              implemented: user?.roles.includes('admin'),
             },
             {
               text: '공급사 관리',
               icon: <BusinessIcon />,
               path: '/suppliers',
-              implemented: user?.role === 'admin',
+              implemented: user?.roles.includes('admin'),
             },
             {
               text: '상품 관리',
               icon: <Inventory />,
               path: '/products',
-              implemented: user?.role === 'admin',
+              implemented: user?.roles.includes('admin'),
             },
           ],
         }
@@ -160,7 +233,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
             text: '사용자 설정',
             icon: <ManageAccountsIcon />,
             path: '/users',
-            implemented: user?.role === 'admin',
+            implemented: user?.roles.includes('admin'),
           },
           {
             text: 'SMS 센터',
@@ -369,8 +442,8 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
                   </Collapse>
                 )}
 
-                {/* 고객사 원장 관리 다음에 구분선 추가 */}
-                {item.text === '고객사 원장 관리' && (
+                {/* 매출원장 관리 다음에 구분선 추가 */}
+                {item.text === '매출원장 관리' && (
                   <Divider sx={{ my: 1.5, mx: 2 }} />
                 )}
               </React.Fragment>
@@ -398,7 +471,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
             </Avatar>
             <Box sx={{ flexGrow: 1 }}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {user?.name} ({user?.role})
+                {user?.name} ({user ? getPrimaryRole(user.roles) : ''})
               </Typography>
             </Box>
           </ListItemButton>

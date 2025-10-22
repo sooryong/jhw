@@ -4,7 +4,7 @@
  * 주요 내용: 거래명세서 출력 페이지 (개별 원장 출력용)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -57,11 +57,7 @@ const TransactionStatementPage = () => {
   const [purchaseStatement, setPurchaseStatement] = useState<PurchaseTransactionStatement | null>(null);
   const [saleStatement, setSaleStatement] = useState<SaleTransactionStatement | null>(null);
 
-  useEffect(() => {
-    loadLedgers();
-  }, [statementType]);
-
-  const loadLedgers = async () => {
+  const loadLedgers = useCallback(async () => {
     setLoadingLedgers(true);
     try {
       if (statementType === 'purchase') {
@@ -77,7 +73,11 @@ const TransactionStatementPage = () => {
     } finally {
       setLoadingLedgers(false);
     }
-  };
+  }, [statementType]);
+
+  useEffect(() => {
+    loadLedgers();
+  }, [loadLedgers]);
 
   const handleGenerate = async () => {
     if (!selectedLedgerId) {

@@ -25,8 +25,8 @@ import { useCustomer } from '../../contexts/CustomerContext';
 import { useCart } from '../../contexts/CartContext';
 import type { SaleOrder } from '../../types/saleOrder';
 import { getSaleOrderHistory, cancelSaleOrder } from '../../services/saleOrderService';
-import { dailyOrderCycleService } from '../../services/dailyOrderCycleService';
-import type { OrderCycleResult } from '../../types/dailyOrderCycle';
+import cutoffService from '../../services/cutoffService';
+import type { CutoffInfo } from '../../types/cutoff';
 import CompletedOrderCard from './components/CompletedOrderCard';
 import CurrentOrderCard from './components/CurrentOrderCard';
 
@@ -48,7 +48,7 @@ const OrderHistoryPage: React.FC = () => {
   const [orders, setOrders] = useState<SaleOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [cycleStatus, setCycleStatus] = useState<OrderCycleResult | null>(null);
+  const [cutoffInfo, setCutoffInfo] = useState<CutoffInfo | null>(null);
 
   // 데이터 로드
   useEffect(() => {
@@ -67,17 +67,17 @@ const OrderHistoryPage: React.FC = () => {
 
       const customerId = customer.businessNumber; // 하이픈 포함 형식
 
-      // 병렬 실행: 주문 내역 + 사이클 상태 조회
-      const [orderHistoryResult, status] = await Promise.all([
+      // 병렬 실행: 주문 내역 + cutoff 상태 조회
+      const [orderHistoryResult, cutoffInfo] = await Promise.all([
         getSaleOrderHistory(customerId, {
           limit: 1000, // 모든 주문 가져오기
         }),
-        dailyOrderCycleService.getStatus()
+        cutoffService.getInfo()
       ]);
 
       // 이미 placedAt desc로 정렬되어 반환됨
       setOrders(orderHistoryResult.orders);
-      setCycleStatus(status);
+      setCutoffInfo(cutoffInfo);
     } catch (err) {
       console.error('주문 내역 로드 실패:', err);
       setError(err instanceof Error ? err.message : '주문 내역을 불러올 수 없습니다.');
@@ -319,7 +319,7 @@ const OrderHistoryPage: React.FC = () => {
                   <CurrentOrderCard
                     key={order.saleOrderNumber}
                     order={order}
-                    cycleStatus={cycleStatus}
+                    cutoffInfo={cutoffInfo}
                     onCancel={handleCancelOrder}
                     onClick={handleOrderClick}
                   />

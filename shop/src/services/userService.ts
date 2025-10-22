@@ -27,8 +27,10 @@ interface FirestoreUser {
   authUid?: string; // Firebase Auth UID (문서 ID와 별도)
   mobile?: string; // 정규화된 휴대폰번호 (11자리 숫자, 문서 ID와 동일)
   name?: string;
-  role?: 'admin' | 'staff' | 'customer';
+  role?: 'admin' | 'staff' | 'customer' | 'supplier'; // 하위 호환성
+  roles?: ('admin' | 'staff' | 'customer' | 'supplier')[]; // 다중 역할
   linkedCustomers?: string[]; // 연결된 고객사 사업자번호 배열 (정규화)
+  linkedSuppliers?: string[]; // 연결된 공급사 사업자번호 배열 (정규화)
   isActive?: boolean;
   createdAt?: Timestamp; // Firestore timestamp
   lastLogin?: Timestamp;
@@ -43,12 +45,16 @@ interface FirestoreUser {
  * @returns JWSUser 객체
  */
 const convertFirestoreToJWSUser = (uid: string, userData: FirestoreUser): JWSUser => {
+  // 하위 호환성: role 필드가 있으면 roles로 변환
+  const roles = userData.roles || (userData.role ? [userData.role] : ['staff']);
+
   return {
     uid,
     name: userData.name || '사용자',
     mobile: userData.mobile as NormalizedMobile || '' as NormalizedMobile,
-    role: userData.role || 'staff',
+    roles,
     linkedCustomers: userData.linkedCustomers as NormalizedBusinessNumber[] || [],
+    linkedSuppliers: userData.linkedSuppliers as NormalizedBusinessNumber[] || [],
     isActive: userData.isActive ?? true,
     createdAt: userData.createdAt?.toDate() || new Date(),
     lastLogin: userData.lastLogin?.toDate() || null,
@@ -239,8 +245,8 @@ export const updateUser = async (uid: string, updateData: Partial<JWSUser>): Pro
     const firestoreData: Record<string, unknown> = {};
 
     // Date 타입이 아닌 필드들만 복사
-    const allowedFields = ['name', 'mobile', 'role', 'email', 'isActive',
-                          'linkedCustomers', 'requiresPasswordChange', 'smsRecipientInfo'];
+    const allowedFields = ['name', 'mobile', 'roles', 'email', 'isActive',
+                          'linkedCustomers', 'linkedSuppliers', 'requiresPasswordChange', 'smsRecipientInfo'];
 
     for (const [key, value] of Object.entries(updateData)) {
       if (allowedFields.includes(key) && value !== undefined) {
@@ -350,7 +356,7 @@ export const createCustomerUser = async (
     const userData: Partial<JWSUser> = {
       name: recipient.name,
       mobile: normalizeNumber(recipient.mobile) as NormalizedMobile,
-      role: 'customer',
+      roles: ['customer'],
       linkedCustomers: businessNumbers.map(bn => normalizeNumber(bn) as NormalizedBusinessNumber),
       isActive: true, // SMS 수신자는 즉시 활성화
       requiresPasswordChange: true // 첫 로그인 시 비밀번호 변경 필수

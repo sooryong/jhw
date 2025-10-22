@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/outbound/DailyOrderOutboundPrintView.tsx
- * 작성 날짜: 2025-10-13
- * 주요 내용: 일일주문 출하 검수서 인쇄 뷰
+* 파일 경로: /src/pages/outbound/OutboundPrintView.tsx
+* 작성 날짜: 2025-10-18
+* 주요 내용: 출하 검수표 인쇄 뷰
  */
 
 import { useEffect, useState } from 'react';
@@ -22,7 +22,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import type { SaleOrder } from '../../types/saleOrder';
 
-const DailyOrderOutboundPrintView = () => {
+const OutboundPrintView = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const [saleOrder, setSaleOrder] = useState<SaleOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -168,4 +168,4 @@ const DailyOrderOutboundPrintView = () => {
   );
 };
 
-export default DailyOrderOutboundPrintView;
+export default OutboundPrintView;

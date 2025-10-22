@@ -48,6 +48,11 @@ const SupplierListPage: React.FC = () => {
     pageSize: 10
   });
 
+  // 정렬 상태
+  const [sortModel, setSortModel] = useState([
+    { field: 'businessName', sort: 'asc' as const },
+  ]);
+
   // 필터 상태
   const [filter, setFilter] = useState<SupplierFilter>({
     isActive: undefined,
@@ -362,12 +367,13 @@ const SupplierListPage: React.FC = () => {
             loading={loading}
             disableRowSelectionOnClick
             disableColumnResize
-            disableColumnMenu
             paginationMode="server"
-            pageSizeOptions={[10, 20, 30]}
+            pageSizeOptions={[10, 20, 30, 50]}
             paginationModel={paginationModel}
             onPaginationModelChange={handlePaginationModelChange}
             rowCount={totalCount}
+            sortModel={sortModel}
+            onSortModelChange={setSortModel}
             getRowId={(row) => row.businessNumber}
             getRowClassName={(params) =>
               !params.row.isActive ? 'inactive-supplier-row' : ''

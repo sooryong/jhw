@@ -4,7 +4,7 @@
  * 주요 내용: 공급사 지급 등록 페이지
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -56,18 +56,6 @@ const SupplierPaymentCreatePage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadSuppliers();
-  }, []);
-
-  useEffect(() => {
-    if (selectedSupplier) {
-      loadSupplierBalance();
-    } else {
-      setCurrentBalance(0);
-    }
-  }, [selectedSupplier]);
-
   const loadSuppliers = async () => {
     try {
       const data = await getSuppliers();
@@ -79,7 +67,7 @@ const SupplierPaymentCreatePage = () => {
     }
   };
 
-  const loadSupplierBalance = async () => {
+  const loadSupplierBalance = useCallback(async () => {
     if (!selectedSupplier) return;
 
     try {
@@ -89,7 +77,19 @@ const SupplierPaymentCreatePage = () => {
       // Error handled silently
       console.error('공급사 계정 조회 실패:', error);
     }
-  };
+  }, [selectedSupplier]);
+
+  useEffect(() => {
+    loadSuppliers();
+  }, []);
+
+  useEffect(() => {
+    if (selectedSupplier) {
+      loadSupplierBalance();
+    } else {
+      setCurrentBalance(0);
+    }
+  }, [selectedSupplier, loadSupplierBalance]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

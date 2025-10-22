@@ -1,7 +1,8 @@
 /**
- * 파일 경로: /src/services/orderAggregationService.ts
+ * 파일 경로: /src/services/dailyFoodPurchaseAggregationService.ts
  * 작성 날짜: 2025-10-04
- * 주요 내용: 주문 집계 서비스
+ * 업데이트: 2025-10-21 (파일명 변경 - 명명 규칙 적용)
+ * 주요 내용: 일일식품 매입 집계 서비스
  * 관련 데이터: saleOrders, products, suppliers 컬렉션
  */
 
@@ -19,7 +20,7 @@ import type { SaleOrder } from '../types/saleOrder';
 import type { Product } from '../types/product';
 import type { Company } from '../types/company';
 
-class OrderAggregationService {
+class DailyFoodPurchaseAggregationService {
   /**
    * 특정 날짜의 매출주문 조회
    */
@@ -41,12 +42,13 @@ class OrderAggregationService {
   }
 
   /**
-   * placed/confirmed/pending 주문 조회 (날짜 필터 없음)
+   * confirmed 주문만 조회 (날짜 필터 없음)
+   * pending/rejected는 매입주문/출하 제외
    */
   async getActiveOrders(): Promise<SaleOrder[]> {
     const q = query(
       collection(db, 'saleOrders'),
-      where('status', 'in', ['placed', 'confirmed', 'pended'])
+      where('status', '==', 'confirmed')
     );
 
     const snapshot = await getDocs(q);
@@ -57,7 +59,8 @@ class OrderAggregationService {
   }
 
   /**
-   * 특정 시간 이후의 Active 주문 조회 (시간 기반 집계용)
+   * 특정 시간 이후의 confirmed 주문만 조회 (시간 기반 집계용)
+   * pending/rejected는 매입주문/출하 제외
    */
   async getActiveOrdersFromTime(fromTime: Date | null): Promise<SaleOrder[]> {
     if (!fromTime) {
@@ -69,7 +72,7 @@ class OrderAggregationService {
 
     const q = query(
       collection(db, 'saleOrders'),
-      where('status', 'in', ['placed', 'confirmed', 'pended']),
+      where('status', '==', 'confirmed'),
       where('placedAt', '>=', Timestamp.fromDate(fromTime))
     );
 
@@ -102,7 +105,7 @@ class OrderAggregationService {
           // Error handled silently
         }
       } catch (error) {
-      // Error handled silently
+        // Error handled silently
         console.error(`Error fetching product ${productId}:`, error);
       }
     }
@@ -133,7 +136,7 @@ class OrderAggregationService {
           // Error handled silently
         }
       } catch (error) {
-      // Error handled silently
+        // Error handled silently
         console.error(`Error fetching supplier ${supplierId}:`, error);
       }
     }
@@ -161,14 +164,14 @@ class OrderAggregationService {
     // confirmationStatus 조회 (전달되지 않은 경우)
     let isConfirmed = false;
     if (!confirmationDates) {
-      const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-      const confirmationStatus = await dailyOrderCycleService.getStatus();
+      const { default: cutoffService } = await import('./cutoffService');
+      const cutoffInfo = await cutoffService.getInfo();
       confirmationDates = {
-        resetAt: confirmationStatus.resetAt,
-        lastConfirmedAt: confirmationStatus.lastConfirmedAt,
-        isConfirmed: confirmationStatus.isConfirmed
+        resetAt: cutoffInfo.openedAt,
+        lastConfirmedAt: cutoffInfo.closedAt,
+        isConfirmed: cutoffInfo.status === 'closed'
       };
-      isConfirmed = confirmationStatus.isConfirmed;
+      isConfirmed = cutoffInfo.status === 'closed';
     } else {
       isConfirmed = confirmationDates.isConfirmed || false;
     }
@@ -262,13 +265,9 @@ class OrderAggregationService {
         if (!supplierAgg) {
           // supplierMap의 키는 하이픈 포함 사업자번호
           const supplier = supplierMap.get(supplierId);
-          const smsRecipients = [];
-          if (supplier?.smsRecipient?.person1) {
-            smsRecipients.push(supplier.smsRecipient.person1);
-          }
-          if (supplier?.smsRecipient?.person2) {
-            smsRecipients.push(supplier.smsRecipient.person2);
-          }
+          // smsRecipients는 userId 기반으로 조회해야 하므로 여기서는 빈 배열로 초기화
+          // SMS 발송 시 userService를 통해 primaryUserId/secondaryUserId로 사용자 조회
+          const smsRecipients: unknown[] = [];
 
           supplierAgg = {
             supplierId,
@@ -297,7 +296,7 @@ class OrderAggregationService {
             placedAmount: 0,
             confirmedAmount: 0,
             totalAmount: 0,
-            unitPrice: product.purchasePrice ?? 0,
+            unitPrice: product.purchasePrice ?? product.latestPurchasePrice ?? 0,
             stockQuantity: product.stockQuantity ?? 0,
             orderCount: 0
           };
@@ -336,6 +335,7 @@ class OrderAggregationService {
 
   /**
    * 일일식품 placed + regular 주문 집계 (확정용)
+   * @deprecated Use aggregateDailyFoodOrders() instead
    */
   async aggregateDailyFoodForConfirmation(date: Date): Promise<DailyFoodAggregation> {
     const orders = await this.getSaleOrdersByDate(date);
@@ -368,6 +368,125 @@ class OrderAggregationService {
       suppliers: dailyFoodAgg.suppliers,
       isConfirmed: false  // 확정 여부는 별도 확인 필요
     };
+  }
+
+  /**
+   * 일일식품 주문 집계 (필드 기반: dailyFoodOrderType === 'regular'인 confirmed 주문만)
+   * @returns 공급사별 일일식품 상품 집계 데이터
+   */
+  async aggregateDailyFoodOrders(): Promise<SupplierAggregation[]> {
+    // dailyFoodOrderType === 'regular'인 confirmed 주문만 조회
+    const q = query(
+      collection(db, 'saleOrders'),
+      where('dailyFoodOrderType', '==', 'regular'),
+      where('status', '==', 'confirmed')
+    );
+
+    const snapshot = await getDocs(q);
+    const orders = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as unknown as SaleOrder));
+
+    if (orders.length === 0) {
+      return [];
+    }
+
+    // 모든 상품 ID 추출
+    const productIds = [
+      ...new Set(
+        orders.flatMap(order =>
+          order.orderItems.map(item => item.productId)
+        )
+      )
+    ];
+
+    // 상품 정보 조회
+    const productMap = await this.getProductsByIds(productIds);
+
+    // 공급사 ID 추출 (일일식품 상품만)
+    const supplierIds = [
+      ...new Set(
+        Array.from(productMap.values())
+          .filter(p => p.mainCategory === '일일식품')
+          .map(p => p.supplierId)
+          .filter(Boolean) as string[]
+      )
+    ];
+
+    // 공급사 정보 조회
+    const supplierMap = await this.getSuppliersByIds(supplierIds);
+
+    // 공급사별 집계 맵
+    const supplierAggMap = new Map<string, SupplierAggregation>();
+
+    // 주문별 처리
+    orders.forEach(order => {
+      order.orderItems.forEach(item => {
+        const product = productMap.get(item.productId);
+        if (!product || product.mainCategory !== '일일식품') return;
+
+        const supplierId = product.supplierId;
+        if (!supplierId) return;
+
+        // 공급사 집계 초기화
+        if (!supplierAggMap.has(supplierId)) {
+          const supplier = supplierMap.get(supplierId);
+          supplierAggMap.set(supplierId, {
+            supplierId,
+            supplierName: supplier?.businessName || '알 수 없음',
+            smsRecipients: [],
+            products: [],
+            totalQuantity: 0,
+            totalPlacedQuantity: 0,
+            totalConfirmedQuantity: 0,
+            totalAmount: 0
+          });
+        }
+
+        const supplierAgg = supplierAggMap.get(supplierId)!;
+
+        // 상품별 집계
+        let productAgg = supplierAgg.products.find(p => p.productId === item.productId);
+        if (!productAgg) {
+          productAgg = {
+            productId: item.productId,
+            productName: item.productName,
+            specification: item.specification,
+            mainCategory: '일일식품',
+            placedQuantity: 0,
+            confirmedQuantity: 0,
+            totalQuantity: 0,
+            placedAmount: 0,
+            confirmedAmount: 0,
+            totalAmount: 0,
+            unitPrice: product.purchasePrice ?? product.latestPurchasePrice ?? 0,
+            stockQuantity: product.stockQuantity ?? 0,
+            orderCount: 0
+          };
+          supplierAgg.products.push(productAgg);
+        }
+
+        // 수량 및 금액 집계
+        productAgg.totalQuantity += item.quantity;
+        productAgg.totalAmount += item.lineTotal;
+        productAgg.orderCount++;
+
+        supplierAgg.totalQuantity += item.quantity;
+        supplierAgg.totalAmount += item.lineTotal;
+      });
+    });
+
+    // 공급사별 상품 정렬 (금액 내림차순)
+    const result = Array.from(supplierAggMap.values());
+    result.forEach(supplier => {
+      supplier.products.sort((a, b) => b.totalAmount - a.totalAmount);
+    });
+
+    // 공급사별 금액 내림차순 정렬
+    result.sort((a, b) => b.totalAmount - a.totalAmount);
+
+    return result;
   }
 
   /**
@@ -414,13 +533,13 @@ class OrderAggregationService {
    * Active 주문 집계 데이터 생성 (시간 기반 집계) - v0.98
    */
   async getActiveOrderAggregationData(): Promise<OrderAggregationData> {
-    // dailyOrderCycles 조회
-    const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-    const confirmationStatus = await dailyOrderCycleService.getStatus();
+    // cutoff 조회
+    const { default: cutoffService } = await import('./cutoffService');
+    const cutoffInfo = await cutoffService.getInfo();
 
-    const resetAt = confirmationStatus.resetAt;                  // 리셋 시간 (정규 시작)
-    const lastConfirmedAt = confirmationStatus.lastConfirmedAt;  // 확정 시간 (정규 종료)
-    const isConfirmed = confirmationStatus.isConfirmed;          // 확정 상태
+    const resetAt = cutoffInfo.openedAt;                  // 리셋 시간 (정규 시작)
+    const lastConfirmedAt = cutoffInfo.closedAt;  // 확정 시간 (정규 종료)
+    const isConfirmed = cutoffInfo.status === 'closed';          // 확정 상태
     const now = new Date();
 
     // resetAt 이후의 주문만 조회
@@ -496,7 +615,6 @@ class OrderAggregationService {
     return {
       total,
       categories,
-      orders, // 원본 주문 데이터 포함
       date: now // 현재 시간 기준
     };
   }
@@ -550,9 +668,9 @@ class OrderAggregationService {
     totalAmount: number;
   }> {
     // resetAt 이후의 주문만 조회 (시간 기반 집계)
-    const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-    const confirmationStatus = await dailyOrderCycleService.getStatus();
-    const resetAt = confirmationStatus.resetAt || new Date();
+    const { default: cutoffService } = await import('./cutoffService');
+    const cutoffInfo = await cutoffService.getInfo();
+    const resetAt = cutoffInfo.openedAt || new Date();
 
     const activeOrders = await this.getActiveOrdersFromTime(resetAt);
 
@@ -604,5 +722,5 @@ class OrderAggregationService {
 }
 
 // 싱글톤 인스턴스
-export const orderAggregationService = new OrderAggregationService();
-export default orderAggregationService;
+export const dailyFoodPurchaseAggregationService = new DailyFoodPurchaseAggregationService();
+export default dailyFoodPurchaseAggregationService;

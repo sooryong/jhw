@@ -1,8 +1,8 @@
 # JHW 플랫폼 관리 시스템 명세서
 
-**버전**: v0.9.1
+**버전**: v0.9.5
 **작성일**: 2025-10-12
-**최종 업데이트**: 2025-10-15
+**최종 업데이트**: 2025-10-22
 **프로젝트명**: JHW Platform Admin System
 **Firebase 프로젝트**: jinhyun-wholesale
 **배포 URL**: https://jinhyun-admin.web.app
@@ -31,8 +31,9 @@ JHW 플랫폼 관리 시스템은 진현유통의 B2B 식품 도매 업무를 �
 
 ### 1.2 주요 특징
 - **역할 기반 접근 제어**: admin, staff, customer, supplier 역할별 차별화된 기능 제공
-- **실시간 주문 관리**: 일일식품 확정 프로세스 자동화
-- **시간 기반 주문 분류**: 확정 전/후 주문 자동 구분 (regular/additional)
+- **실시간 주문 관리**: 신선식품(Fresh Food) 집계 프로세스 자동화
+- **신선식품 집계 관리**: 집계 기간 기반 regular/additional 자동 구분
+- **실시간 재고 비교**: 모든 주문을 실시간으로 집계하고 현재고와 비교
 - **SMS 통합**: 발주서 전송, 알림 등 자동 SMS 발송
 - **매입/매출 원장 관리**: 거래 내역 자동 전표화 및 정산
 - **대리 쇼핑 지원**: 직원이 고객사 대신 주문 가능
@@ -92,6 +93,9 @@ JHW 플랫폼 관리 시스템은 진현유통의 B2B 식품 도매 업무를 �
 ├── admin/                    # 관리 시스템
 │   ├── src/
 │   │   ├── components/       # 공통 컴포넌트
+│   │   ├── contexts/         # React Context (전역 상태 관리)
+│   │   │   ├── AuthContextProvider.tsx
+│   │   │   └── SaleOrderContext.tsx    # 매출주문 전역 상태
 │   │   ├── pages/            # 페이지 컴포넌트 (25개)
 │   │   ├── services/         # Firebase 서비스 레이어
 │   │   ├── types/            # TypeScript 타입 정의
@@ -116,6 +120,115 @@ JHW 플랫폼 관리 시스템은 진현유통의 B2B 식품 도매 업무를 �
 ├── firestore.indexes.json    # Firestore 인덱스
 └── storage.rules             # Storage 보안 규칙
 ```
+
+### 2.4 전역 상태 관리
+
+JHW 플랫폼은 React Context API를 활용한 전역 상태 관리를 통해 컴포넌트 간 효율적인 데이터 공유를 구현합니다.
+
+#### 2.4.1 SaleOrderContext
+
+**목적**: 매출주문 데이터를 전역으로 관리하여 중복 쿼리를 제거하고 실시간 동기화를 보장합니다.
+
+**파일 경로**: `/admin/src/contexts/SaleOrderContext.tsx`
+
+**제공 데이터**:
+```typescript
+interface SaleOrderContextValue {
+  orders: SaleOrder[];           // 현재 집계 기간의 모든 매출주문
+  orderStats: {                  // 주문 통계
+    orderCount: number;          // 주문 건수
+    productTypes: number;        // 상품 종류
+    productCount: number;        // 상품 수량
+    totalAmount: number;         // 총 금액
+  };
+  cutoffInfo: {                  // 일일식품 마감 정보
+    status: 'open' | 'closed';
+    openedAt: Timestamp | null;
+    closedAt: Timestamp | null;
+  };
+  loading: boolean;              // 로딩 상태
+  refreshData: () => Promise<void>;  // 수동 새로고침
+}
+```
+
+**사용 방법**:
+```typescript
+import { useSaleOrderContext } from '../../contexts/SaleOrderContext';
+
+const MyComponent = () => {
+  const { orders, orderStats, cutoffInfo, loading } = useSaleOrderContext();
+
+  // orders 데이터 활용
+  const regularOrders = orders.filter(o => o.dailyFoodOrderType === 'regular');
+
+  return (
+    <div>
+      <p>주문 건수: {orderStats.orderCount}</p>
+      <p>총 금액: {orderStats.totalAmount.toLocaleString()}</p>
+    </div>
+  );
+};
+```
+
+**아키텍처 장점**:
+1. **단일 Firestore 쿼리**:
+   - 모든 페이지가 하나의 실시간 리스너를 공유
+   - 불필요한 중복 쿼리 제거로 Firestore 읽기 비용 절감
+
+2. **실시간 동기화**:
+   - Firestore `onSnapshot` 리스너로 모든 컴포넌트가 자동 업데이트
+   - 데이터 불일치 문제 해결
+
+3. **성능 최적화**:
+   - 한 번의 쿼리로 여러 컴포넌트에 데이터 전달
+   - 통계 데이터 중복 계산 방지
+
+4. **코드 간소화**:
+   - 각 페이지에서 개별 쿼리 작성 불필요
+   - 일관된 데이터 접근 패턴
+
+**사용 페이지**:
+- SaleOrderManagementPage (`/orders/sale-order-management`)
+- SaleOrderListPage (`/orders/sale-orders`)
+- DailyFoodOrderPage (`/orders/daily-food-order`)
+
+**실시간 리스너 구조**:
+```typescript
+// SaleOrderContext 내부 구현
+useEffect(() => {
+  const q = query(
+    collection(db, 'saleOrders'),
+    where('status', '==', 'confirmed'),
+    where('dailyFoodOrderType', 'in', ['regular', 'additional'])
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const ordersData = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    setOrders(ordersData);
+
+    // 통계 자동 계산
+    const stats = calculateOrderStats(ordersData);
+    setOrderStats(stats);
+  });
+
+  return () => unsubscribe();
+}, []);
+```
+
+#### 2.4.2 AuthContextProvider
+
+**목적**: 사용자 인증 상태 및 권한 관리
+
+**파일 경로**: `/admin/src/contexts/AuthContextProvider.tsx`
+
+**제공 기능**:
+- Firebase Authentication 통합
+- 사용자 역할 기반 접근 제어
+- 로그인/로그아웃 관리
+- 세션 유지 및 자동 갱신
 
 ---
 
@@ -198,6 +311,99 @@ JHW 플랫폼 관리 시스템은 진현유통의 B2B 식품 도매 업무를 �
 - **비밀번호 정책**:
   - 최소 8자 이상
   - 영문 대소문자, 숫자, 특수문자 포함
+
+### 4.3 로그인 규칙
+
+#### 4.3.1 플랫폼 로그인 허용 역할
+JHW 플랫폼 관리 시스템은 **관리자(admin)** 및 **직원(staff)** 역할만 로그인할 수 있습니다.
+
+**허용되는 역할 조합**:
+- ✅ `admin` (단일 역할)
+- ✅ `staff` (단일 역할)
+- ✅ `admin` + `customer` (다중 역할)
+- ✅ `admin` + `supplier` (다중 역할)
+- ✅ `staff` + `customer` (다중 역할)
+- ✅ `staff` + `supplier` (다중 역할)
+- ✅ `admin` + `staff` + `customer` + `supplier` (모든 역할)
+
+**차단되는 역할 조합**:
+- ❌ `customer` (단일 역할) → "이 플랫폼은 관리자 및 직원 전용입니다. 고객 로그인은 쇼핑몰을 이용해주세요."
+- ❌ `supplier` (단일 역할) → "공급사 담당자는 현재 로그인이 제한되어 있습니다. 문의사항은 관리자에게 연락해주세요."
+- ❌ `customer` + `supplier` (admin/staff 없음) → 차단
+
+**검증 로직** (`admin/src/contexts/AuthContextProvider.tsx:185-202`):
+```typescript
+// admin 또는 staff 역할이 하나라도 있는지 확인
+const hasAdminOrStaffRole = jwsUser.roles.includes('admin')
+  || jwsUser.roles.includes('staff');
+
+// customer만 있는 경우 차단
+const hasOnlyCustomerRole = jwsUser.roles.includes('customer')
+  && !hasAdminOrStaffRole
+  && !jwsUser.roles.includes('supplier');
+
+// supplier만 있는 경우 차단
+const hasOnlySupplierRole = jwsUser.roles.includes('supplier')
+  && !hasAdminOrStaffRole
+  && !jwsUser.roles.includes('customer');
+
+if (hasOnlyCustomerRole || hasOnlySupplierRole) {
+  await signOut(auth);
+  throw new Error(...);
+}
+```
+
+#### 4.3.2 다중 역할 우선순위
+한 사용자가 여러 역할을 가진 경우, 다음 우선순위에 따라 **주 역할(Primary Role)**을 결정합니다:
+
+**우선순위**: `admin` > `staff` > `customer` > `supplier`
+
+**예시**:
+- 사용자 A: `['admin', 'customer']` → 주 역할: `admin`
+- 사용자 B: `['staff', 'supplier']` → 주 역할: `staff`
+- 사용자 C: `['customer', 'supplier']` → 주 역할: `customer` (플랫폼 로그인 불가)
+
+**주 역할 계산 함수** (각 컴포넌트에서 로컬 헬퍼로 사용):
+```typescript
+const getPrimaryRole = (roles: UserRole[]): UserRole => {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('staff')) return 'staff';
+  if (roles.includes('customer')) return 'customer';
+  if (roles.includes('supplier')) return 'supplier';
+  return 'staff'; // 기본값
+};
+```
+
+**주의사항**:
+- 주 역할은 UI 표시용으로만 사용되며, **저장되지 않습니다**.
+- 권한 검증은 항상 `roles` 배열 전체를 확인합니다 (`roles.includes('admin')`).
+- 주 역할은 컴포넌트마다 필요시 on-the-fly로 계산합니다.
+
+#### 4.3.3 로그인 플로우
+```
+1. 사용자 로그인 시도
+   ↓
+2. Firebase Authentication (휴대폰번호 → 이메일 변환)
+   ↓
+3. Firestore 사용자 정보 조회 (authUid 기반)
+   ↓
+4. 계정 상태 확인 (isActive)
+   ↓
+5. 역할 검증
+   - admin ✓ 또는 staff ✓ 있음 → 로그인 성공
+   - customer만 있음 → 차단 (쇼핑몰 안내)
+   - supplier만 있음 → 차단 (로그인 제한 안내)
+   ↓
+6. 마지막 로그인 시간 업데이트
+   ↓
+7. 역할별 대시보드로 리다이렉트
+```
+
+#### 4.3.4 세션 관리
+- **독립 세션**: Admin 앱과 Shop 앱은 독립된 Firebase Auth 세션 유지
+- **LocalStorage 캐싱**: 사용자 정보 24시간 캐싱 (빠른 초기 로딩)
+- **자동 로그아웃**: 비활성 상태 지속 시 세션 만료
+- **세션 공유 불가**: Admin에서 로그인해도 Shop에서는 별도 로그인 필요
 
 ---
 
@@ -370,8 +576,12 @@ interface SaleOrder {
 
   // 상태 관리
   status: 'placed' | 'confirmed' | 'pended' | 'rejected' | 'completed' | 'cancelled';
-  orderType: 'customer' | 'staff_proxy';     // 주문 출처
-  orderPhase: 'regular' | 'additional';      // 주문 단계
+
+  // 일일식품 주문 타입 (주문 생성 시점에 확정, 이후 불변)
+  dailyFoodOrderType?: 'regular' | 'additional' | 'none';
+  // regular: 마감 시간 내 주문 (정규 집계, 전량 공급 보장)
+  // additional: 마감 시간 후 주문 (여유분 재고로 처리)
+  // none: 일일식품 미포함 주문
 
   placedAt: Timestamp;                       // 접수일시
   confirmedAt?: Timestamp;                   // 확정일시
@@ -395,6 +605,21 @@ interface SaleOrder {
 }
 ```
 
+**주문 생성 규칙:**
+- 모든 SO는 `placed` 상태로 시작
+- 일일식품(mainCategory='일일식품') 포함 여부 확인:
+  - **일일식품 포함 시**: dailyFoodOrderType 필드 설정 (주문 생성 시점에 확정, 이후 불변)
+    - status.status='open' → `dailyFoodOrderType='regular'`
+    - status.status='closed' → `dailyFoodOrderType='additional'`
+  - **일일식품 미포함 시**: `dailyFoodOrderType='none'`
+
+**주문 삭제 규칙:**
+- **접수 기간 중**(status='open'): 모든 SO 삭제 가능
+- **접수 마감 후**(status='closed'):
+  - `dailyFoodOrderType='regular'` SO: **삭제 불가** (정규 집계 완료됨)
+  - `dailyFoodOrderType='additional'` SO: 삭제 가능
+  - `dailyFoodOrderType='none'` SO: 삭제 가능
+
 #### 5.1.6 purchaseOrders (매입주문)
 **문서 ID**: Firestore 자동 생성
 **주문번호**: PO-YYMMDD-001
@@ -411,8 +636,7 @@ interface PurchaseOrder {
   orderItems: PurchaseOrderItem[];           // 주문 상품
   itemCount: number;                         // 품목 수
 
-  category: string;                          // 카테고리 (일일식품/냉동식품/공산품)
-  confirmationStatus: 'regular' | 'additional';  // 확정 상태
+  category: string;                          // 카테고리 (신선식품/냉동식품/공산품)
 
   status: 'placed' | 'confirmed' | 'pended' | 'cancelled' | 'completed';
   placedAt: Timestamp;                       // 발주일시
@@ -491,29 +715,37 @@ interface PurchaseLedger {
 }
 ```
 
-#### 5.1.9 dailyOrderCycles (일일주문 사이클)
-**문서 ID**: `YYMMDD` (날짜 기반)
+#### 5.1.9 freshFoodStatus (신선식품 집계 상태)
+**문서 ID**: `current` (고정)
 
 ```typescript
-interface DailyOrderCycle {
-  cycleDate: string;                         // YYMMDD
-
-  // 상태
-  isConfirmed: boolean;                      // 일일식품 확정 여부
-  confirmedAt?: Timestamp;                   // 확정 시간
-  confirmedBy?: string;                      // 확정자
-
-  // 통계
-  stats: {
-    totalSaleOrders: number;                 // 총 매출주문 수
-    totalPurchaseOrders: number;             // 총 매입주문 수
-    totalAmount: number;                     // 총 주문 금액
-  };
-
-  createdAt: Timestamp;                      // 생성일시
-  updatedAt: Timestamp;                      // 수정일시
+interface FreshFoodStatus {
+  startAt: Timestamp;           // 집계 시작 시간
+  endAt?: Timestamp;            // 집계 마감 시간 (마감 전엔 null)
+  onFreshfood: boolean;         // true: 집계 중, false: 마감됨
+  confirmedBy?: string;         // 마감 처리자 ID
+  confirmedByName?: string;     // 마감 처리자 이름
 }
 ```
+
+**설명:**
+신선식품 집계 기간 상태를 관리하는 단일 문서입니다.
+
+**상태 관리:**
+- `status='open'`: 접수 중, 신규 SO는 `dailyFoodOrderType='regular'`
+- `status='closed'`: 접수 마감, 신규 SO는 `dailyFoodOrderType='additional'`
+
+**접수 시작:**
+1. 관리자가 "일일식품 접수 시작" 버튼 클릭
+2. `status='open'`로 설정
+3. `openedAt=현재시간`, `closedAt=null`
+
+**접수 마감:**
+1. 관리자가 "일일식품 접수 마감" 버튼 클릭
+2. `dailyFoodOrderType='regular'`인 SO의 일일식품 품목만 집계
+3. 매입주문 생성 + SMS 발송
+4. `status='closed'`로 설정
+5. `closedAt=현재시간`
 
 #### 5.1.10 settings (시스템 설정)
 **문서 ID**: `current`
@@ -732,42 +964,67 @@ interface SystemSettings {
 
 ## 7. 주요 기능
 
-### 7.1 일일주문 관리 프로세스
+### 7.1 신선식품(Fresh Food) 집계 프로세스
 
-#### 7.1.1 주문 접수
-1. **고객사 주문**: Shop 앱에서 직접 주문
-   - `orderType: 'customer'`
-   - `orderPhase`: 확정 전이면 'regular', 확정 후면 'additional'
+#### 7.1.1 업무 흐름
 
-2. **직원 대리 주문**: Admin 앱 대리 쇼핑 메뉴
-   - `orderType: 'staff_proxy'`
-   - `orderPhase`: 현재 확정 상태에 따라 자동 결정
+**고객 주문 생성:**
+1. 고객이 Shop 앱 또는 직원이 대리 쇼핑으로 주문 생성
+2. 매출주문(SO) 생성 (`status='placed'`)
+3. 일일식품 포함 여부 확인 (주문 생성 시점에 확정, 이후 불변):
+   - **일일식품 포함** (`mainCategory='일일식품'`): dailyFoodOrderType 필드 설정
+     - `status='open'` → `dailyFoodOrderType='regular'`
+     - `status='closed'` → `dailyFoodOrderType='additional'`
+   - **일일식품 미포함**: `dailyFoodOrderType='none'`
+4. 자동 검사 (초기: 모두 합격)
+5. SO 확정 (`status='confirmed'`)
 
-#### 7.1.2 일일식품 확정
-**경로**: 일일주문 확정 페이지 (`/orders/management`)
+**실시간 집계:**
+- 모든 SO는 실시간으로 집계/조회 가능
+- 카테고리별 집계
+- 현재고와 비교
 
-**처리 내용**:
-1. 당일 `regular` 단계의 모든 `placed` 매출주문을 `confirmed` 상태로 변경
-2. 공급사별/카테고리별로 주문 집계 (orderAggregations 생성)
-3. 집계 결과를 바탕으로 매입주문 생성 (purchaseOrders)
-4. 공급사에 발주서 SMS 발송
-5. `dailyOrderCycles` 문서의 `isConfirmed` 플래그를 `true`로 설정
+#### 7.1.2 신선식품 집계 시작
+**경로**: 신선식품 확정 페이지 (`/orders/fresh-food-confirmation`)
+**권한**: admin만 가능
 
-**확정 후**:
-- 이후 접수되는 주문은 자동으로 `orderPhase: 'additional'`로 생성
-- `additional` 주문은 즉시 `confirmed` 상태로 생성 (별도 확정 불필요)
+**처리 내용:**
+1. cutoff 업데이트:
+   - `status='open'`
+   - `openedAt=현재시간`
+   - `closedAt=null`
+2. 이후 생성되는 SO는 `dailyFoodOrderType='regular'`
 
-#### 7.1.3 주문 상태 흐름
+#### 7.1.3 일일식품 접수 마감
+**버튼**: "일일식품 접수 마감 (매입주문 생성)"
+
+**처리 내용:**
+1. `dailyFoodOrderType='regular'`인 SO 조회
+2. 일일식품 품목만 추출하여 집계
+3. 공급사별 그룹핑
+4. 매입주문(PO) 생성 (+ 여유분)
+5. 공급사에 발주서 SMS 발송
+6. cutoff 업데이트:
+   - `status='closed'`
+   - `closedAt=현재시간`
+7. 이후 생성되는 SO는 `dailyFoodOrderType='additional'`
+
+**접수 마감 후:**
+- `dailyFoodOrderType='regular'` SO는 삭제 불가
+- 여유분 재고로 `dailyFoodOrderType='additional'` 주문 처리
+- 언제든 다시 접수 시작 가능
+
+#### 7.1.4 주문 상태 흐름
 ```
-[Regular 주문 (일일식품 확정 전)]
-placed → confirmed (일일확정 시) → completed (출하 완료 시)
-                 ↘ pended (보류)
-                 ↘ rejected (거부)
-                 ↘ cancelled (취소)
+[모든 매출주문]
+placed → confirmed → completed → 매출원장
+      ↘ pended (보류)
+      ↘ rejected (거부)
+      ↘ cancelled (취소)
 
-[Additional 주문 (일일식품 확정 후)]
-confirmed (생성 즉시) → completed (출하 완료 시)
-                     ↘ cancelled (취소)
+[집계 구분 - 신선식품 포함 시만]
+- regular: 집계 기간 중 주문 (정규 집계 원천, 전량 공급 보장)
+- additional: 집계 마감 후 주문 (여유분 재고로 처리)
 ```
 
 ### 7.2 입고 관리
@@ -870,61 +1127,273 @@ confirmed (생성 즉시) → completed (출하 완료 시)
 
 ### 8.2 주문 관리 페이지
 
-#### 8.2.1 일일주문 확정 페이지 (`/orders/management`)
+#### 8.2.1 신선식품 확정 페이지 (`/orders/fresh-food-confirmation`)
 **권한**: admin만 접근 가능
 
-**UI 구성**: 4-Panel 시간 기반 워크플로우
+**UI 구성**: 2-Panel 레이아웃
 
-**Panel 1: 매출주문 (placed)**
-- 당일 접수된 미확정 주문 목록
-- 필터: regular/additional, 고객사, 금액
-- 액션: 확정, 보류, 거부
-- 총계: 주문 수, 총 금액
+**상태 표시:**
+- 🟢 **신선식품 집계 중** (`onFreshfood=true`)
+  - 시작 시간: YYYY-MM-DD HH:mm
+- 🔴 **신선식품 집계 마감됨** (`onFreshfood=false`)
+  - 마감 시간: YYYY-MM-DD HH:mm
 
-**Panel 2: 주문 집계**
-- 공급사별/카테고리별 집계 결과
+**Panel 1: 매출주문 합계**
+- `dailyFoodOrderType='regular'`인 모든 SO 표시
+- 필터: 고객사, 금액, 상태
+- 총계: 주문 수, 총 금액, 품목 수
+
+**Panel 2: 신선식품 집계**
+- 신선식품 카테고리만 집계
+- 공급사별 그룹핑
 - 상품별 수량 합산
+- 현재고 비교
 - SMS 발송 대상 확인
 
-**Panel 3: 매입주문 (생성)**
-- 집계 결과 기반 매입주문 생성
-- 공급사별 발주서 미리보기
-- SMS 발송 상태 확인
+**토글 버튼:**
+- **집계 마감 상태** (`onFreshfood=false`)
+  - 버튼: "신선식품 집계 시작"
+  - 동작: `start()` 호출 → `onFreshfood=true`
 
-**Panel 4: 확정 완료**
-- 확정된 매출주문 목록
-- 연결된 매입주문 확인
-- 통계 요약
+- **집계 중 상태** (`onFreshfood=true`)
+  - 버튼: "신선식품 집계 마감 (매입주문 생성)"
+  - 동작: `close()` 호출 → 집계 + PO 생성 + SMS 발송 → `onFreshfood=false`
 
-**일일식품 확정 버튼**:
-- Panel 1의 모든 regular 주문을 confirmed로 변경
-- Panel 2-3 자동 실행
-- SMS 자동 발송
-- dailyOrderCycles 업데이트
-
-#### 8.2.2 일일주문 입고 페이지 (`/orders/inbound`)
+#### 8.2.2 입고 관리 페이지 (`/orders/inbound`)
 **권한**: admin, staff 접근 가능
 
 **기능**:
-- 매입주문 목록 (status: 'confirmed')
-- 입고 수량 입력
+- 매입주문 목록 조회 (`status: 'confirmed'`)
+- 입고 수량 입력 및 검수
 - 로트 생성 및 재고 반영
+- 매입가격 결정 (로트별)
 - 매입원장 자동 생성
-- 입고 완료 처리
+- 입고 완료 처리 (`status: 'completed'`)
 
-#### 8.2.3 고객사별 주문 조회 (`/orders/customer-orders`)
-**기능**:
-- 고객사 선택
-- 기간별 주문 내역
-- 주문 상세 보기
-- 엑셀 내보내기
+#### 8.2.3 매출주문 접수 (`/orders/sale-orders`)
+**권한**: admin, staff 접근 가능
+**페이지명**: SaleOrderListPage
+**페이지 제목**: "매출주문 접수"
 
-#### 8.2.4 상품별 집계 (`/orders/product-aggregation`)
+**UI 구성**: SubPageHeader + 탭 필터 + 통계 패널 + 일괄 확정 버튼 + DataGrid + 다이얼로그
+
+**탭 필터**:
+- 전체: 모든 주문 표시 (placed + confirmed)
+- 접수: placed 상태 주문만 표시 (체크박스 활성화)
+- 확정: confirmed 상태 주문만 표시
+
+**통계 패널** (4-Card 레이아웃):
+- 주문 건수: 현재 탭의 주문 수
+- 상품 종류: 고유 상품 종류 수
+- 상품 수량: 전체 상품 수량
+- 금액: 총 주문 금액
+
+**일괄 확정 버튼**:
+- 접수 탭에서만 표시: "일괄 확정 (N)" (N = 선택된 주문 수)
+- 동작: `batchConfirmSaleOrders()` 호출
+- 효과: 선택된 모든 placed 주문을 confirmed로 변경
+- 재고 확인: 일괄 확정 시 재고 부족 경고 표시 (StockWarningDialog)
+- 재고 부족 시: 개별 확정 권장 메시지 표시
+
+**DataGrid 컬럼**:
+- 체크박스: 접수 탭에서만 활성화 (일괄 확정용)
+- 주문번호: 매출주문 코드
+- 주문일시: 주문 접수 시간 (YY-MM-DD HH:mm)
+- 고객사: 고객사명
+- 상품수량: 주문 상품 총 수량
+- 금액: 주문 금액
+- 상태: Chip으로 표시 (접수/확정/완료)
+- 처리: IconButton (EditIcon) - 상세 다이얼로그 열기
+
+**SaleOrderDetailDialog (개별 주문 확정)**:
+- 주문 기본 정보 표시
+- 상태 변경 RadioGroup: 확정/보류/거절
+- placed → confirmed 전환 시:
+  - 자동 재고 확인 (`confirmSaleOrder()` 호출)
+  - 재고 부족 시 StockWarningDialog 표시
+  - 강제 확정 옵션 제공 (재고 확인 우회)
+- 주문 상품 목록 DataGrid
+
+**재고 검증 로직**:
+- 개별 확정: `confirmSaleOrder(saleOrderNumber)`
+  - 재고 확인 → 부족 시 경고 → 강제 확정 가능
+- 일괄 확정: `batchConfirmSaleOrders(saleOrderNumbers[])`
+  - 각 주문별 재고 확인 → 부족 건 집계 → 경고 표시 → 개별 확정 권장
+
+**StockWarningDialog**:
+- 재고 부족 상품 목록 테이블
+- 컬럼: 상품명, 주문 수량, 현재 재고, 부족 수량
+- 버튼: 취소, 그래도 확정
+
 **기능**:
-- 일자 선택
-- 상품별 주문 수량 집계
+- 주문 목록 실시간 조회
+- 탭별 필터링 (전체/접수/확정)
+- 체크박스 선택 (접수 탭만)
+- 개별 확정: 상세 다이얼로그에서 상태 변경
+- 일괄 확정: 여러 주문 동시 확정
+- 재고 검증 및 경고
+- 정렬 및 페이징 (10/20/30건)
+- 새로고침 버튼
+
+**데이터 소스**:
+- `SaleOrderContext` (전역 상태 관리)
+  - `orders`: cutoffOpenedAt 이후의 모든 매출주문 (placed + confirmed)
+  - `orderStats`: 주문 통계 (confirmed 주문만 집계)
+  - `cutoffInfo`: 일일식품 마감 정보
+
+**통계 집계 규칙**:
+- SaleOrderContext.orderStats는 **confirmed 상태 주문만** 집계
+- 페이지 내부 통계는 현재 탭에 표시된 주문 기준
+
+**서비스 함수**:
+- `checkStockAvailability(orderItems)`: 재고 확인
+- `confirmSaleOrder(saleOrderNumber)`: 개별 주문 확정 (재고 검증 포함)
+- `batchConfirmSaleOrders(saleOrderNumbers[])`: 일괄 주문 확정
+- `updateSaleOrderStatus(saleOrderNumber, status)`: 상태 변경 (재고 검증 없음)
+
+**명명 규칙**:
+- Service 레이어: `batch` 접두사 (예: `batchConfirmSaleOrders`)
+- UI 핸들러: `All` 접미사 (예: `handleConfirmAllOrders`)
+- 버튼 레이블: "일괄" (한글)
+
+**메뉴 연결**:
+- 메인 메뉴: "매출주문 접수" (단일 페이지, 서브 메뉴 없음)
+
+#### 8.2.4 일일식품 발주 현황 (`/orders/daily-food-order`)
+**권한**: admin, staff 접근 가능
+**페이지 제목**: "일일식품 발주 현황"
+
+**UI 구성**: SubPageHeader + 집계 시간 정보 + 통계 패널 + 마감 버튼 + DataGrid
+
+**집계 시간 정보 패널** (3-Card 레이아웃):
+- 시작 시간: 일일식품 집계 시작 시간
+- 현재 시간: 실시간 시계
+- 마감 시간: 마감 시간 표시 (마감 후)
+
+**통계 패널** (4-Card 레이아웃):
+- 정규 주문: `dailyFoodOrderType='regular'` 주문 수
+- 추가 주문: `dailyFoodOrderType='additional'` 주문 수
+- 상품 수량: 총 상품 수량
+- 금액: 총 주문 금액
+
+**마감 버튼**:
+- 접수 중 상태: "일일식품 마감 (마감만)" 버튼
+  - 동작: `dailyCutoffService.closeOnly()` 호출
+  - 효과: cutoff status만 'closed'로 변경, PO 생성 없음
+  - 안내: "마감 후 매입 집계 페이지에서 매입주문을 생성해주세요."
+- 마감 상태: "일일식품 접수 재시작" 버튼
+  - 동작: `dailyCutoffService.open()` 호출
+
+**DataGrid**:
+- dailyFoodOrderType='regular' 주문 목록 표시
+- 컬럼: 주문번호, 고객사, 상품수량, 금액, 상태
+- Firestore 실시간 리스너
+
+**메뉴 연결**:
+- 메인 메뉴: "일일식품 발주"
+- 서브 메뉴: "발주 현황" (이 페이지)
+
+**특징**:
+- 3-Stage 수동 프로세스의 첫 번째 단계
+- 마감 버튼 클릭 시 PO 생성 없이 상태만 변경
+- 마감 후 매입 집계 페이지로 이동 안내
+
+#### 8.2.7 일일식품 매입 집계 (`/orders/daily-food-aggregation`)
+**권한**: admin, staff 접근 가능
+**페이지 제목**: "일일식품 매입 집계"
+
+**UI 구성**: SubPageHeader + 통계 패널 + 일괄 생성 버튼 + DataGrid
+
+**통계 패널** (4-Card 레이아웃):
+- 공급사 수: 집계된 공급사 수
+- 상품 종류: 집계된 상품 종류 수
+- 상품 수량: 총 상품 수량
+- 매입 금액: 총 매입 금액
+
+**일괄 생성 버튼**:
+- "매입주문 일괄 생성 (N개 공급사)"
+- 동작: `dailyFoodPurchaseOrderService.createBatchFromAggregation()`
+- 효과: 모든 공급사에 대해 PO 생성 (status='placed')
+- 완료 후: 자동으로 매입 발주 페이지로 이동
+
+**DataGrid - 공급사별 목록**:
+- 컬럼:
+  - 공급사: 공급사명
+  - 상품 종류: 해당 공급사의 상품 종류 수
+  - 총 수량: 해당 공급사의 총 주문 수량
+  - 총 금액: 해당 공급사의 총 금액
+  - 생성: 개별 생성 버튼 (AddIcon)
+- 개별 생성 버튼 클릭:
+  - 동작: `dailyFoodPurchaseOrderService.createFromAggregation(supplier, 'placed')`
+  - 효과: 해당 공급사에 대해서만 PO 생성
+  - 완료 후: 해당 공급사 행 제거
+
+**데이터 소스**:
+- `orderAggregationService.aggregateDailyFoodOrders()`
+- `dailyFoodOrderType='regular'` 주문만 집계
 - 공급사별 그룹핑
-- 인쇄 기능
+
+**실시간 갱신**:
+- saleOrders 컬렉션 Firestore 실시간 리스너
+- 주문 변경 시 자동 재집계
+
+**메뉴 연결**:
+- 메인 메뉴: "일일식품 발주"
+- 서브 메뉴: "매입 집계" (이 페이지)
+
+**특징**:
+- 3-Stage 수동 프로세스의 두 번째 단계
+- 일괄 생성 + 개별 생성 모두 지원
+- PO 생성 후 매입 발주 페이지로 자동 이동
+
+#### 8.2.5 일일식품 매입 발주 (`/orders/daily-food-purchase-order-list`)
+**권한**: admin, staff 접근 가능
+**페이지 제목**: "일일식품 매입 발주"
+
+**UI 구성**: SubPageHeader + 통계 패널 + 일괄 SMS 버튼 + DataGrid
+
+**통계 패널** (4-Card 레이아웃):
+- 발주 건수: 오늘 생성된 PO 수
+- 상품 종류: 총 상품 종류 수
+- 상품 수량: 총 상품 수량
+- 매입 금액: 총 매입 금액
+
+**일괄 SMS 발송 버튼**:
+- "SMS 일괄 발송 및 확정 (N건 대기)"
+- 대상: `status='placed'`인 PO만
+- 동작:
+  1. `dailyFoodPurchaseOrderService.sendBatchSms()` 호출
+  2. SMS 성공한 PO는 `status='confirmed'`로 변경
+- 완료 후: 성공/실패 건수 표시
+
+**DataGrid - PO 목록**:
+- 필터: `category='일일식품'`, `placedAt >= 오늘 00:00`
+- 컬럼:
+  - PO번호: 매입주문 코드
+  - 공급사: 공급사명
+  - 품목수: 주문 품목 수
+  - 금액: 총 금액
+  - 상태: Chip (대기/확정)
+  - SMS 발송: 개별 발송 버튼 (SendIcon)
+- 개별 발송 버튼:
+  - 대상: `status='placed'`인 PO만 활성화
+  - 동작:
+    1. SMS 발송
+    2. 성공 시 `status='confirmed'`로 변경
+  - 완료 상태: CheckCircleIcon (비활성)
+
+**데이터 소스**:
+- `dailyFoodPurchaseOrderService.getTodayOrders()`
+- Firestore 실시간 리스너
+
+**메뉴 연결**:
+- 메인 메뉴: "일일식품 발주"
+- 서브 메뉴: "매입 발주" (이 페이지)
+
+**특징**:
+- 3-Stage 수동 프로세스의 세 번째 단계
+- 일괄 SMS + 개별 SMS 모두 지원
+- SMS 발송 후 자동으로 PO 상태 confirmed로 변경
 
 ### 8.3 기준정보 관리 페이지
 
@@ -997,6 +1466,18 @@ confirmed (생성 즉시) → completed (출하 완료 시)
   - supplier: linkedSuppliers (공급사 목록)
 - 활성/비활성 토글
 
+**사용자 정보 수정 모달 UI**:
+- **기본 정보 패널** (3칼럼 레이아웃):
+  - 휴대폰번호(ID): 30% 너비
+  - 이름: 30% 너비
+  - 역할: 40% 너비 (다중 역할 Chip 표시)
+  - 계정 상태: 패널 하단에 배치 (Switch + Chip + 설명)
+- **비밀번호 관리**: supplier 단독 역할은 제외
+- **위험 구역 (삭제)**:
+  - 인라인 확인 방식 (별도 모달 없음)
+  - 삭제 버튼 클릭 → [취소] [삭제 확인] 버튼으로 변경
+  - 간결한 안내 문구 유지
+
 **초기 비밀번호**: `password123!` (첫 로그인 시 변경 필수)
 
 **로그인 제한**:
@@ -1038,12 +1519,15 @@ confirmed (생성 즉시) → completed (출하 완료 시)
 ### 9.1 Admin 역할 메뉴
 ```
 ├── 대시보드
-├── 일일주문 확정
-├── 일일주문 입고
-├── 일일주문 출하 (미구현)
-├── 원장 관리
-│   ├── 매입 원장
-│   └── 매출 원장 (미구현)
+├── 매출주문 접수
+├── 일일식품 발주
+│   ├── 발주 현황
+│   ├── 매입 집계
+│   └── 매입 발주
+├── 입고 관리
+├── 출하 관리
+├── 매입원장 관리
+├── 매출원장 관리
 ├── 기준정보 관리
 │   ├── 고객사 관리
 │   ├── 공급사 관리
@@ -1056,10 +1540,17 @@ confirmed (생성 즉시) → completed (출하 완료 시)
 ### 9.2 Staff 역할 메뉴
 ```
 ├── 대시보드
-├── 일일주문 입고
-├── 일일주문 출하 (미구현)
-└── 원장 관리
-    └── 매입 원장
+├── 매출주문 접수
+├── 일일식품 발주
+│   ├── 발주 현황
+│   ├── 매입 집계
+│   └── 매입 발주
+├── 입고 관리
+├── 출하 관리
+├── 매입원장 관리
+├── 매출원장 관리
+└── 시스템 설정
+    └── SMS 센터
 ```
 
 ### 9.3 Customer 역할 메뉴
@@ -1193,11 +1684,76 @@ service cloud.firestore {
 - `purchaseOrder.ts`: 매입주문 타입
 - `purchaseLedger.ts`: 매입원장 타입
 - `orderAggregation.ts`: 주문 집계 타입
-- `dailyOrderCycle.ts`: 일일주문 사이클 타입
+- `freshFoodStatus.ts`: 신선식품 집계 상태 타입
 - `phoneNumber.ts`: 번호 정규화 타입
 - `sms.ts`: SMS 관련 타입
 
-### B. 주요 서비스 함수
+### B. 주요 공통 컴포넌트
+
+#### B.1 SubPageHeader
+**경로**: `/admin/src/components/common/SubPageHeader.tsx`
+
+**용도**: 서브 페이지의 표준 헤더 컴포넌트
+
+**Props**:
+```typescript
+interface SubPageHeaderProps {
+  title: string;              // 페이지 제목
+  onBack: () => void;         // 돌아가기 버튼 클릭 핸들러
+  onRefresh: () => void;      // 새로고침 버튼 클릭 핸들러
+  loading?: boolean;          // 새로고침 버튼 로딩 상태 (선택)
+}
+```
+
+**UI 구조**:
+- **좌측**: 돌아가기 버튼 (ArrowBackIcon) + 페이지 제목
+  - 간격: gap: 2 (16px)
+  - 돌아가기 버튼 텍스트: 모바일에서 숨김, 데스크톱에서 표시
+- **우측**: 새로고침 버튼 (RefreshIcon)
+  - 새로고침 버튼 텍스트: 모바일에서 숨김, 데스크톱에서 표시
+- **여백**: p: 2, pb: 3
+
+**반응형**:
+- **모바일 (< 600px)**: 아이콘만 표시
+- **데스크톱 (≥ 600px)**: 아이콘 + 텍스트 표시
+
+**사용 페이지**:
+- SaleOrderListPage
+- ProductAggregationPage
+- 기타 서브 페이지
+
+### C. 주요 Contexts 및 서비스
+
+#### C.1 Contexts (전역 상태 관리)
+
+**SaleOrderContext** (`/admin/src/contexts/SaleOrderContext.tsx`):
+- **목적**: 매출주문 데이터 전역 관리
+- **제공 Hook**: `useSaleOrderContext()`
+- **제공 값**:
+  - `orders: SaleOrder[]` - 현재 집계 기간의 모든 매출주문
+  - `orderStats` - 주문 통계 (주문 건수, 상품 종류, 상품 수량, 총 금액)
+  - `cutoffInfo` - 일일식품 마감 정보 (status, openedAt, closedAt)
+  - `loading: boolean` - 로딩 상태
+  - `refreshData: () => Promise<void>` - 수동 새로고침 함수
+- **특징**:
+  - 단일 Firestore 쿼리로 모든 컴포넌트에 데이터 제공
+  - Firestore 실시간 리스너로 자동 동기화
+  - 중복 쿼리 제거로 비용 절감
+- **사용 페이지**:
+  - SaleOrderManagementPage (`/orders/sale-order-management`)
+  - SaleOrderListPage (`/orders/sale-orders`)
+  - DailyFoodOrderPage (`/orders/daily-food-order`)
+
+**AuthContextProvider** (`/admin/src/contexts/AuthContextProvider.tsx`):
+- **목적**: 사용자 인증 및 권한 관리
+- **제공 Hook**: `useAuth()`
+- **제공 값**:
+  - `user: JWSUser | null` - 현재 로그인 사용자
+  - `login()` - 로그인 함수
+  - `logout()` - 로그아웃 함수
+  - `loading: boolean` - 로딩 상태
+
+#### C.2 주요 서비스 함수
 상세 서비스 구현은 `/admin/src/services/` 디렉토리 참조:
 - `userService.ts`: 사용자 관리
   - `addCustomerToUser()`: 사용자에 고객사 연결
@@ -1218,8 +1774,14 @@ service cloud.firestore {
 - `purchaseOrderService.ts`: 매입주문 관리
 - `purchaseLedgerService.ts`: 매입원장 관리
 - `orderAggregationService.ts`: 주문 집계
-- `dailyOrderCycleService.ts`: 일일주문 사이클
-- `dailySaleOrderFlowService.ts`: 일일주문 확정 워크플로우
+- `freshFoodStatusService.ts`: 신선식품 집계 상태 관리
+  - `getStatus()`: 현재 집계 상태 조회
+  - `start()`: 집계 시작 (onFreshfood=true)
+  - `close()`: 집계 마감 (집계 + PO 생성)
+  - `initialize()`: 초기화
+- `saleOrderService.ts`: 매출주문 관리
+  - SO 생성 시 dailyFoodOrderType 필드 자동 설정 (주문 생성 시점에 확정, 이후 불변)
+  - SO 삭제 시 규칙 검증
 - `smsService.ts`: SMS 발송
 
 ### C. 참고 문서
@@ -1230,12 +1792,124 @@ service cloud.firestore {
 
 ---
 
-**문서 버전**: v0.9.1
-**마지막 업데이트**: 2025-10-15
+**문서 버전**: v0.9.9
+**마지막 업데이트**: 2025-10-19
 **작성자**: Claude Code
 **연락처**: 진현유통 관리자
 
 ## 변경 이력
+
+### v0.9.9 (2025-10-19)
+- **메뉴 구조 개편**:
+  - 메뉴명 변경: "매출주문 접수관리" → "매출주문 접수집계"
+  - "일일식품 매입발주" 메뉴 신규 추가 (3-stage 수동 프로세스)
+  - 하이브리드 메뉴 패턴 확장: 일일식품 매입발주 (접수 현황, 매입 집계, 매입 발주)
+- **일일식품 매입발주 3-Stage 수동 프로세스**:
+  - **Stage 1: 접수 현황** (`/orders/daily-food-order`)
+    - 마감 버튼 클릭 시 PO 생성 없이 cutoff status만 변경
+    - `dailyCutoffService.closeOnly()` 신규 메서드 추가
+    - 마감 후 매입 집계 페이지로 이동 안내
+  - **Stage 2: 매입 집계** (`/orders/daily-food-aggregation`)
+    - 공급사별 일일식품 집계 표시
+    - 일괄 생성 버튼: 모든 공급사에 대해 PO 생성
+    - 개별 생성 버튼: 공급사별 PO 개별 생성
+    - PO 생성 후 자동으로 매입 발주 페이지로 이동
+  - **Stage 3: 매입 발주** (`/orders/daily-food-purchase-order-list`)
+    - 오늘 생성된 일일식품 PO 목록 표시
+    - 일괄 SMS 발송: 모든 'placed' PO에 SMS 발송 + 'confirmed'로 상태 변경
+    - 개별 SMS 발송: PO별 SMS 발송 + 'confirmed'로 상태 변경
+- **서비스 레이어 개선**:
+  - `dailyCutoffService.closeOnly()`: cutoff status만 변경, PO 생성 없음
+  - `dailyFoodPurchaseOrderService.createBatchFromAggregation()`: 일괄 PO 생성
+  - `dailyFoodPurchaseOrderService.createFromAggregation()`: 개별 PO 생성
+  - `dailyFoodPurchaseOrderService.getTodayOrders()`: 오늘 일일식품 PO 조회
+  - `dailyFoodPurchaseOrderService.sendBatchSms()`: 일괄 SMS 발송
+- **페이지 신규 추가**:
+  - `DailyFoodAggregationPage.tsx`: 일일식품 매입 집계 페이지
+  - `DailyFoodPurchaseOrderListPage.tsx`: 일일식품 매입 발주 페이지
+- **기존 페이지 수정**:
+  - `DailyFoodOrderPage.tsx`: 마감 버튼 기능 변경 (PO 생성 제거)
+- **라우팅 업데이트**:
+  - `/orders/daily-food-aggregation`: 매입 집계 페이지
+  - `/orders/daily-food-purchase-order-list`: 매입 발주 페이지
+- **Sidebar 메뉴 업데이트**:
+  - "일일식품 발주" → "일일식품 매입발주" (3개 서브 메뉴)
+
+### v0.9.8 (2025-10-19)
+- **전역 상태 관리 시스템 도입**:
+  - SaleOrderContext 구현으로 매출주문 데이터 전역 관리
+  - React Context API 활용하여 컴포넌트 간 효율적인 데이터 공유
+  - 단일 Firestore 쿼리로 모든 페이지가 데이터 공유 (중복 쿼리 제거)
+  - Firestore 실시간 리스너로 자동 동기화 및 데이터 일관성 보장
+- **아키텍처 개선**:
+  - SaleOrderManagementPage: SaleOrderContext 사용으로 전환
+  - CustomerOrderListPage: SaleOrderContext 사용으로 전환
+  - DailyFoodOrderPage: SaleOrderContext 사용으로 전환
+  - 성능 최적화: 통계 데이터 중복 계산 방지
+- **용어 통일**:
+  - 라우터 경로 변경: daily-fresh → daily-food
+  - 코드 전반에 걸쳐 "daily-food" 용어로 통일
+  - JSDoc 주석 업데이트 (daily fresh product → daily food product)
+- **메뉴 구조 개편**:
+  - 하이브리드 메뉴 패턴 적용 (메인 메뉴 + 서브 메뉴)
+  - 메인 메뉴명 변경: "매출주문 접수" → "매출주문 접수관리"
+  - 서브 메뉴 추가: "접수 현황", "주문 목록", "상품 집계"
+  - 페이지명 통일: CustomerOrderListPage → SaleOrderListPage
+  - 라우트 경로 변경: /orders/customer-orders → /orders/sale-orders
+  - 페이지 제목 변경: "매출주문 접수" → "매출주문 접수 현황"
+  - UI 개선: 상세보기 버튼을 심플한 텍스트 스타일로 변경 ("상세보기 →")
+- **문서 업데이트**:
+  - 섹션 2.3: contexts/ 디렉토리 추가
+  - 섹션 2.4 신규 추가: "전역 상태 관리" (SaleOrderContext 상세 문서)
+  - 섹션 8.2.3, 8.2.4, 8.2.5: 메뉴 연결 정보 추가, 데이터 소스를 SaleOrderContext로 업데이트
+  - 섹션 9.1, 9.2: 메뉴 구조 업데이트 (하이브리드 패턴 반영)
+  - 부록 C: Contexts 섹션 추가 (useSaleOrderContext 훅 문서화)
+
+### v0.9.7 (2025-10-19)
+- **일일식품 주문 타입 시스템 개선**:
+  - 주문 타입 필드 변경: `aggregation` → `dailyFoodOrderType`
+  - 타입 값 변경: `regular` / `additional` / `none` (일일식품 미포함 시)
+  - **불변성 원칙**: 주문 생성 시점에 타입 확정, 이후 절대 변경 불가
+  - 시간 기반 재계산 제거 → 필드 기반 쿼리로 전환 (데이터 무결성 보장)
+  - cutoff 컬렉션 사용 (단일 문서 'current' 관리)
+  - status: 'open' (접수 중) / 'closed' (마감됨)
+- **주요 변경사항**:
+  - **Shop 앱**: saleOrderService에서 주문 생성 시 dailyFoodOrderType 설정
+  - **Admin 앱**: 모든 페이지에서 필드 기반 쿼리 적용
+  - orderAggregationService: 시간 기반 필터링 제거
+  - DailyFoodOrderPage, DailyFoodOrderListPage, DailyFoodPurchaseOrderPage: 필드 기반 쿼리
+- **비즈니스 규칙**:
+  - 마감 시간(closedAt)은 관리자가 수동 설정 (자동 15:00 아님)
+  - 마감 후에도 추가 주문 가능 (dailyFoodOrderType='additional')
+  - 마감 전 주문(regular)은 마감 후 삭제 불가
+  - 마감 기간은 유연하게 설정 (공휴일 대응 가능)
+
+### v0.9.6 (2025-10-18)
+- **신선식품 집계 시스템 재설계**:
+  - 용어 변경: 일일식품 → 신선식품 (Fresh Food)
+  - freshFoodStatus 컬렉션 신규 생성 (단일 문서 `current` 관리)
+  - SO.orderType 필드 제거 (createdBy로 충분)
+  - SO.orderPhase → SO.aggregation으로 변경
+  - 매출주문 단순화: 모든 SO는 `placed`로 시작
+  - 신선식품 집계 기간 기반 aggregation 자동 설정
+  - SO 삭제 규칙 추가 (집계 완료 후 `aggregation='regular'` SO 삭제 불가)
+- **페이지 개편**:
+  - 일일주문 확정 → 신선식품 확정 페이지
+  - 경로: `/orders/management` → `/orders/fresh-food-confirmation`
+  - 2-Panel UI 구조로 단순화
+  - 토글 버튼 방식: 집계 시작 ↔ 집계 마감
+- **실시간 집계**:
+  - 모든 SO 실시간 집계/조회
+  - 카테고리별 집계
+  - 현재고 비교 기능
+- **데이터 모델**:
+  - freshFoodStatus 타입 추가
+  - SaleOrder 타입에서 orderType, orderPhase 제거, aggregation 추가
+  - PurchaseOrder 타입에서 confirmationStatus 제거
+- **서비스 레이어**:
+  - `freshFoodStatusService.ts` 신규 (start, close, getStatus, initialize)
+  - `dailyOrderCycleService.ts`, `dailySaleOrderFlowService.ts` 제거 예정
+  - saleOrderService에 SO 생성/삭제 규칙 로직 추가
 
 ### v0.9.1 (2025-10-15)
 - **사용자 역할 추가**: supplier role 추가

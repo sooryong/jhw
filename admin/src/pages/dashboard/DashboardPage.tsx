@@ -1,8 +1,8 @@
 /**
  * 파일 경로: /src/pages/dashboard/DashboardPage.tsx
  * 작성 날짜: 2025-10-08
- * 주요 내용: 대시보드 - 매출주문 집계 및 상품 집계 통계 패널
- * 관련 데이터: saleOrders, products, dailyOrderCycles
+ * 주요 내용: 대시보드 - 매출주문 접수 및 상품 집계 통계 패널
+ * 관련 데이터: saleOrders, products, cutoff
  */
 
 import { useState, useEffect } from 'react';
@@ -17,7 +17,6 @@ import {
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
-  Dashboard as DashboardIcon,
   ShoppingCart as ShoppingCartIcon,
   Category as CategoryIcon,
   LocalShipping as LocalShippingIcon
@@ -25,8 +24,8 @@ import {
 import { format } from 'date-fns';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-import orderAggregationService from '../../services/orderAggregationService';
-import dailyOrderCycleService from '../../services/dailyOrderCycleService';
+import { useSaleOrderContext } from '../../contexts/SaleOrderContext';
+import dailyFoodPurchaseAggregationService from '../../services/dailyFoodPurchaseAggregationService';
 import purchaseOrderService from '../../services/purchaseOrderService';
 import productService from '../../services/productService';
 import type { OrderAggregationData } from '../../types/orderAggregation';
@@ -34,6 +33,7 @@ import type { SaleOrder } from '../../types/saleOrder';
 import type { PurchaseOrder } from '../../types/purchaseOrder';
 
 const DashboardPage = () => {
+  const { orders: contextOrders, cutoffInfo, loading: contextLoading, refreshData } = useSaleOrderContext();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,19 +57,31 @@ const DashboardPage = () => {
     setError(null);
 
     try {
-      // resetAt 기준으로 매출주문 조회
-      const cycleStatus = await dailyOrderCycleService.getStatus();
-      const orders = await orderAggregationService.getActiveOrdersFromTime(cycleStatus.resetAt);
+      // cutoffInfo에서 범위 시작 시간 가져오기
+      const cutoffOpenedAt = cutoffInfo.openedAt || new Date(new Date().setHours(0, 0, 0, 0));
+
+      // Context에서 받은 매출주문 사용 (confirmed 주문만 필터링)
+      const orders = contextOrders.filter(o => o.status === 'confirmed');
       setSaleOrders(orders);
 
-      // 상품 집계 데이터 조회
-      const data = await orderAggregationService.getActiveOrderAggregationData();
-      setAggregationData(data);
+      // 상품 집계 데이터 생성
+      const categories = await dailyFoodPurchaseAggregationService.aggregateByCategory(orders);
+      const aggregationData: OrderAggregationData = {
+        total: {
+          regular: { count: 0, amount: 0 },
+          additional: { count: 0, amount: 0 },
+          pended: { count: 0, amount: 0 },
+          rejected: { count: 0, amount: 0 }
+        },
+        categories,
+        date: new Date()
+      };
+      setAggregationData(aggregationData);
 
       // 일일식품 매입주문 조회 및 금액 계산
       const purchaseOrdersList = await purchaseOrderService.getPurchaseOrders({
         category: '일일식품',
-        startDate: cycleStatus.resetAt || undefined
+        startDate: cutoffOpenedAt
       });
       setDailyFoodPurchaseOrders(purchaseOrdersList);
 
@@ -97,33 +109,23 @@ const DashboardPage = () => {
     }
   };
 
+  // contextOrders가 변경될 때마다 데이터 처리
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextOrders, cutoffInfo]);
 
-    // Firestore 실시간 리스너 설정
-    let unsubscribeSaleOrders: (() => void) | null = null;
+  // 매입주문 실시간 리스너 설정
+  useEffect(() => {
     let unsubscribePurchaseOrders: (() => void) | null = null;
 
-    const setupListeners = async () => {
-      const status = await dailyOrderCycleService.getStatus();
-      const resetAt = status.resetAt || new Date(new Date().setHours(0, 0, 0, 0));
-
-      // 매출주문 리스너
-      const saleOrdersQuery = query(
-        collection(db, 'saleOrders'),
-        where('placedAt', '>=', Timestamp.fromDate(resetAt))
-      );
-
-      unsubscribeSaleOrders = onSnapshot(saleOrdersQuery, (snapshot) => {
-        if (snapshot.docChanges().length > 0) {
-          loadData();
-        }
-      });
+    const setupPurchaseOrdersListener = () => {
+      const cutoffOpenedAt = cutoffInfo.openedAt || new Date(new Date().setHours(0, 0, 0, 0));
 
       // 매입주문 리스너
       const purchaseOrdersQuery = query(
         collection(db, 'purchaseOrders'),
-        where('placedAt', '>=', Timestamp.fromDate(resetAt)),
+        where('placedAt', '>=', Timestamp.fromDate(cutoffOpenedAt)),
         where('category', '==', '일일식품')
       );
 
@@ -134,48 +136,45 @@ const DashboardPage = () => {
       });
     };
 
-    setupListeners();
+    setupPurchaseOrdersListener();
 
     return () => {
-      if (unsubscribeSaleOrders) {
-        unsubscribeSaleOrders();
-      }
       if (unsubscribePurchaseOrders) {
         unsubscribePurchaseOrders();
       }
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cutoffInfo]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    await refreshData();
     await loadData();
     // 최소 500ms 로딩 표시
     await new Promise(resolve => setTimeout(resolve, 500));
     setRefreshing(false);
   };
 
-  // 매출주문 집계 통계 계산
+  // 매출주문 접수 통계 계산
   const getSaleOrderStats = () => {
-    const regularOrders = saleOrders.filter(o => o.orderPhase === 'regular');
-    const additionalOrders = saleOrders.filter(o => o.orderPhase === 'additional');
+    const activeOrders = saleOrders.filter(o => o.status !== 'rejected' && o.status !== 'pended');
     const rejectedOrders = saleOrders.filter(o => o.status === 'rejected' || o.status === 'pended');
 
-    const regularAmount = regularOrders.reduce((sum, o) => sum + o.finalAmount, 0);
-    const additionalAmount = additionalOrders.reduce((sum, o) => sum + o.finalAmount, 0);
+    const activeAmount = activeOrders.reduce((sum, o) => sum + o.finalAmount, 0);
     const rejectedAmount = rejectedOrders.reduce((sum, o) => sum + o.finalAmount, 0);
 
     return {
       total: {
         count: saleOrders.length,
-        amount: regularAmount + additionalAmount
+        amount: activeAmount
       },
       regular: {
-        count: regularOrders.length,
-        amount: regularAmount
+        count: activeOrders.length,
+        amount: activeAmount
       },
       additional: {
-        count: additionalOrders.length,
-        amount: additionalAmount
+        count: 0,
+        amount: 0
       },
       rejected: {
         count: rejectedOrders.length,
@@ -255,7 +254,7 @@ const DashboardPage = () => {
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <DashboardIcon sx={{ mr: 1.5, color: 'primary.main', fontSize: 28 }} />
+  
                   <Typography
                     variant="h4"
                     sx={{
@@ -287,7 +286,7 @@ const DashboardPage = () => {
           </Box>
 
           {/* 로딩 */}
-          {loading && (
+          {(loading || contextLoading) && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
               <CircularProgress />
             </Box>
@@ -301,14 +300,14 @@ const DashboardPage = () => {
           )}
 
           {/* 대시보드 패널 */}
-          {!loading && !error && (
+          {!loading && !contextLoading && !error && (
             <>
-              {/* 매출주문 집계 패널 */}
+              {/* 매출주문 접수 패널 */}
               <Box sx={{ px: 2, pb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
                   <ShoppingCartIcon sx={{ mr: 1, color: 'primary.main', fontSize: 24 }} />
                   <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    매출주문 집계
+                    매출주문 접수
                   </Typography>
                 </Box>
 

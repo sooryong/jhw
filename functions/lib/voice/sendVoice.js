@@ -16,7 +16,7 @@ exports.sendVoice = (0, https_1.onCall)({
     timeoutSeconds: 60,
     maxInstances: 10
 }, async (request) => {
-    var _a;
+    var _a, _b;
     const { auth } = request;
     if (!auth) {
         throw new https_1.HttpsError('unauthenticated', 'User must be authenticated');
@@ -26,7 +26,7 @@ exports.sendVoice = (0, https_1.onCall)({
         .where('authUid', '==', auth.uid)
         .limit(1)
         .get();
-    if (userQuery.empty || ((_a = userQuery.docs[0].data()) === null || _a === void 0 ? void 0 : _a.role) !== 'admin') {
+    if (userQuery.empty || !((_b = (_a = userQuery.docs[0].data()) === null || _a === void 0 ? void 0 : _a.roles) === null || _b === void 0 ? void 0 : _b.includes('admin'))) {
         throw new https_1.HttpsError('permission-denied', 'Admin role required');
     }
     try {

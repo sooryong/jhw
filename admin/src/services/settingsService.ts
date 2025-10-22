@@ -154,7 +154,7 @@ export class SettingsService {
 
       // 설정이 없을 경우 기본값 반환
       return ['도매 고객', '중도매 고객', '대형 고객', '소매 고객'];
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 에러 시에도 기본값 반환
       return ['도매 고객', '중도매 고객', '대형 고객', '소매 고객'];

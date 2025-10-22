@@ -94,19 +94,19 @@ const MessagePanel: React.FC<MessagePanelProps> = ({
       id: 'business',
       icon: <BusinessIcon />,
       title: '비즈니스 안내',
-      content: '[JWS] 안녕하세요. 비즈니스 관련 안내드립니다.'
+      content: '[JHW] 안녕하세요. 비즈니스 관련 안내드립니다.'
     },
     {
       id: 'shipping',
       icon: <ShippingIcon />,
       title: '배송 알림',
-      content: '[JWS] 고객님의 상품이 출하되었습니다. 운송장번호: '
+      content: '[JHW] 고객님의 상품이 출하되었습니다. 운송장번호: '
     },
     {
       id: 'payment',
       icon: <PaymentIcon />,
       title: '결제 확인',
-      content: '[JWS] 결제가 완료되었습니다. 결제금액: '
+      content: '[JHW] 결제가 완료되었습니다. 결제금액: '
     }
   ];
 

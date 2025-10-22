@@ -15,6 +15,8 @@ export interface PurchaseOrderItem {
   mainCategory?: string;       // 대분류 카테고리
   specification?: string;      // 상품 규격
   quantity: number;            // 주문 수량
+  unitPrice: number;          // 매입 단가
+  lineTotal: number;          // 라인별 소계 (unitPrice × quantity)
 }
 
 // 매입주문
@@ -27,6 +29,14 @@ export interface PurchaseOrder {
   supplierInfo: {
     businessName: string;      // 상호명
     smsRecipients: SMSRecipient[];  // SMS 수신자 배열
+    primaryContact?: {
+      name: string;
+      mobile: string;
+    };
+    secondaryContact?: {
+      name: string;
+      mobile: string;
+    };
   };
 
   // 주문 상품
@@ -35,6 +45,13 @@ export interface PurchaseOrder {
 
   // 카테고리
   category: string;            // "일일식품", "냉동식품", "공산품"
+
+  // 주문 유형 (생성 경로)
+  orderType?: 'dailyFood' | 'frozen' | 'grocery' | 'manual';
+  // dailyFood: 일일식품 집계에서 자동 생성
+  // frozen: 냉동식품 집계에서 자동 생성
+  // grocery: 공산품 집계에서 자동 생성
+  // manual: 수동 생성 (또는 undefined)
 
   // 상태 관리 (생명주기)
   status: 'placed' | 'confirmed' | 'pended' | 'cancelled' | 'completed';
@@ -102,7 +119,7 @@ export const getPurchaseOrderStatusColor = (
 ): 'default' | 'warning' | 'success' | 'info' | 'error' => {
   switch (status) {
     case 'placed': return 'warning';      // 발주: 주황색
-    case 'confirmed': return 'info';      // 확정: 파란색
+    case 'confirmed': return 'success';   // 확정: 녹색
     case 'pended': return 'warning';      // 보류: 주황색
     case 'cancelled': return 'default';   // 취소: 회색
     case 'completed': return 'success';   // 입고완료: 녹색

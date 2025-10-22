@@ -30,14 +30,14 @@ class DailyFoodPurchaseOrderService {
   private async checkRecentPurchaseOrder(
     supplierId: string
   ): Promise<{ exists: boolean; purchaseOrderNumber?: string }> {
-    const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-    const status = await dailyOrderCycleService.getStatus();
+    const { default: cutoffService } = await import('./cutoffService');
+    const cutoffInfo = await cutoffService.getInfo();
 
-    if (!status.lastConfirmedAt) {
+    if (!cutoffInfo.closedAt) {
       return { exists: false };
     }
 
-    const confirmedTime = status.lastConfirmedAt;
+    const confirmedTime = cutoffInfo.closedAt;
     const startTime = new Date(confirmedTime.getTime() - 60000);
     const endTime = new Date(confirmedTime.getTime() + 60000);
 
@@ -106,26 +106,43 @@ class DailyFoodPurchaseOrderService {
         productId: product.productId,
         productName: product.productName,
         specification: product.specification || '',
-        quantity: product.totalQuantity
+        quantity: product.totalQuantity,
+        unitPrice: product.unitPrice || 0,
+        lineTotal: product.totalAmount || 0
       }));
 
-      // 5. 일일확정 상태 조회 (현재 사용하지 않지만 향후 확장 가능)
-      // const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-      // const confirmationStatus = await dailyOrderCycleService.getStatus();
-
-      // 6. 매입주문 데이터 생성
+      // 5. 매입주문 데이터 생성
       const now = Timestamp.now();
+
+      // supplierInfo 객체 생성 (undefined 필드 제외)
+      const supplierInfo: PurchaseOrder['supplierInfo'] = {
+        businessName: supplierData.businessName || supplier.supplierName,
+        smsRecipients: supplier.smsRecipients
+      };
+
+      if (supplierData.primaryContact) {
+        supplierInfo.primaryContact = {
+          name: supplierData.primaryContact.name,
+          mobile: supplierData.primaryContact.mobile
+        };
+      }
+
+      if (supplierData.secondaryContact) {
+        supplierInfo.secondaryContact = {
+          name: supplierData.secondaryContact.name,
+          mobile: supplierData.secondaryContact.mobile
+        };
+      }
+
       const purchaseOrder: Partial<PurchaseOrder> = {
         purchaseOrderNumber,
         supplierId: supplier.supplierId,
         category: this.category,
+        orderType: 'dailyFood',
         status,
         itemCount: orderItems.length,
         orderItems,
-        supplierInfo: {
-          businessName: supplierData.businessName || supplier.supplierName,
-          smsRecipients: supplier.smsRecipients
-        },
+        supplierInfo,
         placedAt: now,
         createdAt: now,
         updatedAt: now,
@@ -172,10 +189,6 @@ class DailyFoodPurchaseOrderService {
     try {
       const createdOrderIds: string[] = [];
 
-      // 일일확정 상태 조회 (현재 사용하지 않지만 향후 확장 가능)
-      // const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-      // const confirmationStatus = await dailyOrderCycleService.getStatus();
-
       for (const supplier of suppliers) {
         // 매입주문번호 생성
         const purchaseOrderNumber = await purchaseOrderService.generatePurchaseOrderId();
@@ -199,21 +212,41 @@ class DailyFoodPurchaseOrderService {
           productName: product.productName,
           mainCategory: product.mainCategory || '',
           specification: product.specification || '',
-          quantity: product.totalQuantity
+          quantity: product.totalQuantity,
+          unitPrice: product.unitPrice || 0,
+          lineTotal: product.totalAmount || 0
         }));
+
+        // supplierInfo 객체 생성 (undefined 필드 제외)
+        const supplierInfo: PurchaseOrder['supplierInfo'] = {
+          businessName: supplierData.businessName || supplier.supplierName,
+          smsRecipients: supplier.smsRecipients || []
+        };
+
+        if (supplierData.primaryContact) {
+          supplierInfo.primaryContact = {
+            name: supplierData.primaryContact.name,
+            mobile: supplierData.primaryContact.mobile
+          };
+        }
+
+        if (supplierData.secondaryContact) {
+          supplierInfo.secondaryContact = {
+            name: supplierData.secondaryContact.name,
+            mobile: supplierData.secondaryContact.mobile
+          };
+        }
 
         // 매입주문 데이터 생성
         const purchaseOrder: Omit<PurchaseOrder, 'id'> = {
           purchaseOrderNumber,
           supplierId: supplier.supplierId,
           category: this.category,
+          orderType: 'dailyFood',
           status: 'placed',
           itemCount: orderItems.length,
           orderItems,
-          supplierInfo: {
-            businessName: supplierData.businessName || supplier.supplierName,
-            smsRecipients: supplier.smsRecipients || []
-          },
+          supplierInfo,
           placedAt: Timestamp.now(),
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
@@ -303,6 +336,25 @@ class DailyFoodPurchaseOrderService {
       category: this.category,
       startDate: resetAt
     });
+  }
+
+  /**
+   * 일일식품 매입주문 일괄 SMS 발송
+   * @param purchaseOrderNumbers - 매입주문번호 배열
+   * @returns SMS 발송 결과
+   */
+  async sendBatchSms(purchaseOrderNumbers: string[]): Promise<{
+    totalSent: number;
+    totalSuccess: number;
+    results: Array<{
+      purchaseOrderNumber: string;
+      success: boolean;
+      sentCount: number;
+      successCount: number;
+      error?: string;
+    }>;
+  }> {
+    return purchaseOrderService.sendBatchSms(purchaseOrderNumbers);
   }
 }
 

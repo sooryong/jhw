@@ -135,7 +135,7 @@ class ProductService {
       }
 
       return products;
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('상품 목록을 불러올 수 없습니다.');
     }
@@ -173,7 +173,7 @@ class ProductService {
       }
 
       return null;
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('상품 정보를 불러올 수 없습니다.');
     }
@@ -225,7 +225,7 @@ class ProductService {
 
       const querySnapshot = await getDocs(q);
       return querySnapshot.size;
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 오류 처리: 상품 개수 조회 실패
       throw new ProductServiceError('상품 개수를 불러올 수 없습니다.');
@@ -335,9 +335,14 @@ class ProductService {
         }
       });
 
+      // purchasePrice 변경 시 latestPurchasePrice도 동기화
+      if (productData.purchasePrice !== undefined && productData.purchasePrice !== null) {
+        updateData.latestPurchasePrice = productData.purchasePrice;
+      }
+
       // Firestore 업데이트
       await updateDoc(this.getDocRef(productId), updateData as unknown);
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('상품 수정 중 오류가 발생했습니다.');
     }
@@ -356,7 +361,7 @@ class ProductService {
 
       // Firestore에서 삭제
       await deleteDoc(this.getDocRef(productId));
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('상품 삭제 중 오류가 발생했습니다.');
     }
@@ -373,7 +378,7 @@ class ProductService {
         stockQuantity: newQuantity,
         updatedAt: Timestamp.now()
       });
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('재고 업데이트 중 오류가 발생했습니다.');
     }
@@ -387,7 +392,7 @@ class ProductService {
       return products.filter(product =>
         (product.stockQuantity ?? 0) <= (product.minimumStock || 0)
       );
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('재고 부족 상품을 조회할 수 없습니다.');
     }
@@ -400,7 +405,7 @@ class ProductService {
         supplierId,
         isActive: true
       });
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('공급사 상품을 조회할 수 없습니다.');
     }
@@ -419,7 +424,7 @@ class ProductService {
       }
 
       return await this.getProducts(filter);
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('카테고리 상품을 조회할 수 없습니다.');
     }
@@ -477,7 +482,7 @@ class ProductService {
         inactive: inactiveProducts.length,
         lowStock: lowStockProducts.length
       };
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('상품 통계를 조회할 수 없습니다.');
     }
@@ -497,7 +502,7 @@ class ProductService {
       const nextNumber = currentNumber + 1;
       const formattedNumber = nextNumber.toString().padStart(6, '0');
       return `P${formattedNumber}`;
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('다음 상품 코드를 조회할 수 없습니다.');
     }
@@ -571,7 +576,7 @@ class ProductService {
         updatedAt: Timestamp.now()
       });
 
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('로트 추가 중 오류가 발생했습니다.');
     }
@@ -616,7 +621,7 @@ class ProductService {
         updatedAt: Timestamp.now()
       });
 
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('재고 차감 중 오류가 발생했습니다.');
     }
@@ -649,7 +654,7 @@ class ProductService {
       const product = productDoc.data() as Product;
       return (product.lots || []).sort((a, b) => b.lotDate.localeCompare(a.lotDate));
 
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new ProductServiceError('로트 이력을 조회할 수 없습니다.');
     }

@@ -51,6 +51,11 @@ const CustomerListPage: React.FC = () => {
     pageSize: 10
   });
 
+  // 정렬 상태
+  const [sortModel, setSortModel] = useState([
+    { field: 'businessName', sort: 'asc' as const },
+  ]);
+
   // 필터 상태
   const [filter, setFilter] = useState<CustomerFilter>({
     isActive: undefined,
@@ -92,7 +97,7 @@ const CustomerListPage: React.FC = () => {
         setCustomerTypesLoading(true);
         const types = await settingsService.getCustomerTypes();
         setCustomerTypes(types);
-      } catch (error) {
+      } catch {
       // Error handled silently
         // 오류 처리: 고객사 유형 로드 실패
       } finally {
@@ -421,12 +426,16 @@ const CustomerListPage: React.FC = () => {
             loading={loading}
             disableRowSelectionOnClick
             disableColumnResize
-            disableColumnMenu
+            // 페이지네이션
             paginationMode="server"
-            pageSizeOptions={[10, 20, 30]}
+            pageSizeOptions={[10, 20, 30, 50]}
             paginationModel={paginationModel}
             onPaginationModelChange={handlePaginationModelChange}
             rowCount={totalCount}
+            // 정렬
+            sortModel={sortModel}
+            onSortModelChange={setSortModel}
+            // 기타
             getRowId={(row) => row.businessNumber}
             getRowClassName={(params) =>
               !params.row.isActive ? 'inactive-customer-row' : ''

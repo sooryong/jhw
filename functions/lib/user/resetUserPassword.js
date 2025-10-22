@@ -26,7 +26,7 @@ exports.resetUserPassword = (0, https_1.onCall)({
     region: 'asia-northeast3',
     maxInstances: 10,
 }, async (request) => {
-    var _a;
+    var _a, _b;
     try {
         // 인증 확인
         if (!request.auth) {
@@ -42,7 +42,7 @@ exports.resetUserPassword = (0, https_1.onCall)({
             .where('authUid', '==', request.auth.uid)
             .limit(1)
             .get();
-        if (callerQuery.empty || ((_a = callerQuery.docs[0].data()) === null || _a === void 0 ? void 0 : _a.role) !== 'admin') {
+        if (callerQuery.empty || !((_b = (_a = callerQuery.docs[0].data()) === null || _a === void 0 ? void 0 : _a.roles) === null || _b === void 0 ? void 0 : _b.includes('admin'))) {
             throw new Error('Admin permission required');
         }
         // 대상 사용자 정보 가져오기 (uid는 휴대폰번호 = 문서 ID)

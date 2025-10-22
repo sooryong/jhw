@@ -64,6 +64,11 @@ export interface SupplierAggregation {
   totalPlacedQuantity: number;     // placed 수량
   totalConfirmedQuantity: number;  // confirmed 수량
   totalAmount: number;             // 총 금액
+
+  // 매입주문 생성 상태 (2025-10-20 추가)
+  hasPurchaseOrder?: boolean;           // 매입주문 생성 여부
+  purchaseOrderNumber?: string | null;  // 생성된 매입주문 번호
+  purchaseOrderCreatedAt?: Date | null; // 매입주문 생성 시간
 }
 
 // 카테고리별 집계

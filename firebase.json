@@ -22,7 +22,7 @@
   "hosting": [
     {
       "target": "admin",
-      "public": "admin/dist",
+      "public": "maintenance",
       "ignore": [
         "firebase.json",
         "**/.*",
@@ -37,7 +37,7 @@
     },
     {
       "target": "shop",
-      "public": "shop/dist",
+      "public": "maintenance",
       "ignore": [
         "firebase.json",
         "**/.*",

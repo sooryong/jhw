@@ -102,7 +102,7 @@ const ProductDetailPage: React.FC = () => {
       const formDataObj = productToFormData(productData);
       setFormData(formDataObj);
       setOriginalData(formDataObj);
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 오류 처리: 상품 정보 로드 실패
       setSubmitError('상품 정보를 불러올 수 없습니다.');
@@ -245,7 +245,7 @@ const ProductDetailPage: React.FC = () => {
         setOriginalData(prev => prev ? { ...prev, isActive: newStatus } : null);
       }
 
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 오류 처리: 상품 상태 변경 실패
 
@@ -268,7 +268,7 @@ const ProductDetailPage: React.FC = () => {
     try {
       await productService.deleteProduct(productId);
       navigate('/products');
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 오류 처리: 상품 삭제 실패
       setSubmitError('상품 삭제 중 오류가 발생했습니다.');

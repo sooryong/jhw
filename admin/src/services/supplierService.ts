@@ -155,7 +155,7 @@ export class SupplierService {
       }
 
       return suppliers;
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new CompanyServiceError('공급사 목록을 불러올 수 없습니다.', 'FETCH_FAILED');
     }
@@ -189,7 +189,7 @@ export class SupplierService {
 
       const querySnapshot = await getDocs(q);
       return querySnapshot.size;
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 오류 처리: 공급사 개수 조회 실패
       throw new CompanyServiceError('공급사 개수를 불러올 수 없습니다.', 'FETCH_FAILED');
@@ -211,7 +211,7 @@ export class SupplierService {
         } as Supplier;
       }
       return null;
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new CompanyServiceError('공급사 정보를 불러올 수 없습니다.', 'FETCH_FAILED');
     }
@@ -327,7 +327,7 @@ export class SupplierService {
         isActive,
         updatedAt: Timestamp.now()
       });
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new CompanyServiceError('공급사 상태 업데이트 중 오류가 발생했습니다.', 'UPDATE_FAILED');
     }
@@ -339,7 +339,7 @@ export class SupplierService {
       const businessNumberId = businessNumberUtils.normalize(businessNumber);
       const supplierRef = doc(db, this.collectionName, businessNumberId);
       await deleteDoc(supplierRef);
-    } catch (error) {
+    } catch {
       // Error handled silently
       throw new CompanyServiceError('공급사 삭제 중 오류가 발생했습니다.', 'DELETE_FAILED');
     }

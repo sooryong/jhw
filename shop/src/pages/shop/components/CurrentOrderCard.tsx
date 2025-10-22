@@ -20,24 +20,24 @@ import {
   Lock as LockIcon,
 } from '@mui/icons-material';
 import type { SaleOrder } from '../../../types/saleOrder';
-import type { OrderCycleResult } from '../../../types/dailyOrderCycle';
+import type { CutoffInfo } from '../../../types/cutoff';
 
 interface CurrentOrderCardProps {
   order: SaleOrder;
-  cycleStatus: OrderCycleResult | null;
+  cutoffInfo: CutoffInfo | null;
   onCancel?: (order: SaleOrder) => void;
   onClick?: (order: SaleOrder) => void;
 }
 
 const CurrentOrderCard: React.FC<CurrentOrderCardProps> = ({
   order,
-  cycleStatus,
+  cutoffInfo,
   onCancel,
   onClick,
 }) => {
   /**
    * 주문 취소 가능 여부 판단
-   * - 정규 주문 (orderPhase: 'regular'): resetAt ~ lastConfirmedAt 전까지만 취소 가능
+   * - 정규 주문 (orderPhase: 'regular'): openedAt ~ closedAt 전까지만 취소 가능
    * - 추가 주문 (orderPhase: 'additional'): placedAt ~ 다음날 00:00 전까지만 취소 가능
    */
   const canCancelOrder = (): { canCancel: boolean; reason?: string } => {
@@ -51,19 +51,19 @@ const CurrentOrderCard: React.FC<CurrentOrderCardProps> = ({
 
     // 정규 주문 (orderPhase: 'regular')
     if (order.orderPhase === 'regular') {
-      // lastConfirmedAt이 없으면 (아직 마감 전) 취소 가능
-      if (!cycleStatus?.lastConfirmedAt) {
+      // closedAt이 없으면 (아직 마감 전) 취소 가능
+      if (!cutoffInfo?.closedAt) {
         return { canCancel: true };
       }
 
-      const lastConfirmedAt = cycleStatus.lastConfirmedAt;
+      const closedAt = cutoffInfo.closedAt;
 
-      // placedAt이 lastConfirmedAt 이전이면 취소 가능
-      if (placedAt < lastConfirmedAt) {
+      // placedAt이 closedAt 이전이면 취소 가능
+      if (placedAt < closedAt) {
         return { canCancel: true };
       }
 
-      // lastConfirmedAt 이후에는 취소 불가
+      // closedAt 이후에는 취소 불가
       return { canCancel: false, reason: '주문이 확정되어 취소할 수 없습니다!' };
     }
 

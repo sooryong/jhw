@@ -58,6 +58,16 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 import { CustomerProvider } from '../../contexts/CustomerContext';
 import { getCustomer } from '../../services/customerService';
+import type { UserRole } from '../../types/user';
+
+// 역할 우선순위 계산 (admin > staff > customer > supplier)
+const getPrimaryRole = (roles: UserRole[]): UserRole => {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('staff')) return 'staff';
+  if (roles.includes('customer')) return 'customer';
+  if (roles.includes('supplier')) return 'supplier';
+  return 'staff'; // 기본값
+};
 
 const DRAWER_WIDTH = 240;
 
@@ -110,7 +120,7 @@ const ShopLayout: React.FC = () => {
       }
 
       // Admin/Staff: URL 파라미터에서 고객사명 읽기
-      if (user.role === 'admin' || user.role === 'staff') {
+      if (user.roles.includes('admin') || user.roles.includes('staff')) {
         const customerNameParam = searchParams.get('name');
         if (customerNameParam && customerNameParam.trim()) {
           setCustomerName(decodeURIComponent(customerNameParam));
@@ -144,7 +154,7 @@ const ShopLayout: React.FC = () => {
     };
 
     loadCustomerName();
-  }, [searchParams, user?.role, user]);
+  }, [searchParams, user?.roles, user]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -317,7 +327,7 @@ const ShopLayout: React.FC = () => {
             </IconButton>
 
             {/* 사용자 정보: 아이콘 + 이름(역할) */}
-            {user?.role === 'customer' ? (
+            {user?.roles.includes('customer') ? (
               // 고객사 사용자: 클릭 가능한 메뉴
               <Box sx={{ flexGrow: 1 }}>
                 <ListItemButton
@@ -398,7 +408,7 @@ const ShopLayout: React.FC = () => {
                 <Typography variant="body2" sx={{ fontWeight: 500, color: '#D1D5DB', fontSize: '0.9rem' }}>
                   {user?.name || user?.email}
                   <Typography component="span" sx={{ color: '#6B7280', ml: 0.5 }}>
-                    ({user?.role})
+                    ({user ? getPrimaryRole(user.roles) : ''})
                   </Typography>
                 </Typography>
               </Box>

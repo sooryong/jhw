@@ -35,6 +35,17 @@ const SupplierAccountListPage = () => {
     totalPaid: 0
   });
 
+  // 페이지네이션 상태
+  const [paginationModel, setPaginationModel] = useState({
+    page: 0,
+    pageSize: 20,
+  });
+
+  // 정렬 상태
+  const [sortModel, setSortModel] = useState([
+    { field: 'currentBalance', sort: 'desc' as const },
+  ]);
+
   useEffect(() => {
     loadAccounts();
   }, []);
@@ -244,11 +255,11 @@ const SupplierAccountListPage = () => {
                 loading={loading}
                 disableRowSelectionOnClick
                 onRowClick={handleRowClick}
-                initialState={{
-                  pagination: { paginationModel: { pageSize: 20 } },
-                  sorting: { sortModel: [{ field: 'currentBalance', sort: 'desc' }] }
-                }}
-                pageSizeOptions={[10, 20, 50]}
+                paginationModel={paginationModel}
+                onPaginationModelChange={setPaginationModel}
+                pageSizeOptions={[10, 20, 30, 50]}
+                sortModel={sortModel}
+                onSortModelChange={setSortModel}
                 sx={{
                   bgcolor: 'background.paper',
                   '& .MuiDataGrid-cell': {

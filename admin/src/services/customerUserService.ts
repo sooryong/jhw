@@ -65,7 +65,7 @@ export async function getCustomerUsers(customerId: string): Promise<CustomerUser
 
     const usersQuery = query(
       collection(db, 'users'),
-      where('role', '==', 'customer'),
+      where('roles', 'array-contains', 'customer'),
       where('linkedCustomers', 'array-contains', normalizedId)
     );
 
@@ -144,7 +144,7 @@ export async function createCustomerUser(
       name: data.name,
       mobile: normalizedMobile,
       password,
-      role: 'customer',
+      roles: ['customer'],
       linkedCustomers: [normalizedCustomerId],
       isActive: true,
       smsRecipientInfo: {
@@ -194,7 +194,7 @@ export async function linkUserToCustomer(
 
       const userData = userDoc.data() as JWSUser;
 
-      if (userData.role !== 'customer') {
+      if (!userData.roles.includes('customer')) {
         throw new Error('User is not a customer role');
       }
 

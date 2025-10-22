@@ -89,7 +89,7 @@ const RecipientPanel: React.FC<RecipientPanelProps> = ({
     try {
       const data = await getRecipients();
       setCloudRecipients(data);
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 에러 무시
     }
@@ -116,7 +116,7 @@ const RecipientPanel: React.FC<RecipientPanelProps> = ({
       setNewName('');
       // 목록 새로고침
       await loadRecipients();
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 에러 무시
     }
@@ -131,7 +131,7 @@ const RecipientPanel: React.FC<RecipientPanelProps> = ({
       await deleteRecipient(recipientId);
       // 목록 새로고침
       await loadRecipients();
-    } catch (error) {
+    } catch {
       // Error handled silently
       alert('수신자 삭제에 실패했습니다.');
     } finally {

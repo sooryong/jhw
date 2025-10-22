@@ -1,6 +1,7 @@
 /**
  * 파일 경로: /src/types/saleOrder.ts
  * 작성 날짜: 2025-09-28
+ * 최종 수정: 2025-10-18
  * 주요 내용: 매출주문 타입 정의
  * 관련 데이터: saleOrders 컬렉션
  */
@@ -10,15 +11,8 @@ import { Timestamp } from 'firebase/firestore';
 // 매출주문 상태
 export type SaleOrderStatus = 'placed' | 'confirmed' | 'pended' | 'rejected' | 'completed' | 'cancelled';
 
-// 주문 출처 타입
-export type OrderType = 'customer' | 'staff_proxy';
-// customer: 고객이 직접 쇼핑몰에서 주문
-// staff_proxy: JWS 직원이 고객사를 대신해서 주문
-
-// 주문 단계 타입
-export type OrderPhase = 'regular' | 'additional';
-// regular: 정규 주문 (일일식품 확정 전 주문 단계, placed 상태로 시작)
-// additional: 추가 주문 (일일식품 확정 후 주문 단계, 바로 confirmed 상태)
+// 일일식품 주문 타입 (주문 생성 시점에 확정, 이후 불변)
+export type DailyFoodOrderType = 'regular' | 'additional' | 'none';
 
 // 주문 상품 아이템
 export interface OrderItem {
@@ -63,13 +57,17 @@ export interface SaleOrder {
 
   // 상태 관리
   status: SaleOrderStatus;
-  orderType: OrderType;                    // 주문 출처 (customer: 고객 직접, staff_proxy: 직원 대리)
-  orderPhase: OrderPhase;                  // 주문 단계 (regular: 정규 단계, additional: 추가 단계)
   placedAt: Timestamp;        // 주문접수일시
   confirmedAt?: Timestamp;    // 주문확정일시 (자동 또는 강제 확정)
   completedAt?: Timestamp;    // 출하완료일시 (선택)
   cancelledAt?: Timestamp;    // 주문취소일시 (선택)
   rejectedAt?: Timestamp;     // 주문거부일시 (선택)
+
+  // 일일식품 주문 타입 (주문 생성 시점에 확정, 이후 불변)
+  dailyFoodOrderType?: DailyFoodOrderType;
+  // regular: 마감 시간 내 주문 (정규 집계, 전량 공급 보장)
+  // additional: 마감 시간 후 주문 (여유분 재고로 처리)
+  // none: 일일식품 미포함 주문
 
   // pended 상태 관리
   pendedReason?: string;      // pended 사유
@@ -94,8 +92,7 @@ export interface CreateSaleOrderData {
   orderItems: OrderItem[];
   finalAmount: number;
   itemCount: number;
-  orderType: OrderType;      // 주문 출처 (customer | staff_proxy)
-  createdBy: string;
+  createdBy: string;          // 주문자 ID (고객 또는 직원)
 }
 
 // 장바구니 아이템

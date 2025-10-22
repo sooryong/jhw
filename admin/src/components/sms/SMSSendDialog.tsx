@@ -113,7 +113,7 @@ const SMSSendDialog: React.FC<SMSSendDialogProps> = ({
       } else {
         setError(result.message || 'SMS 발송에 실패했습니다.');
       }
-    } catch (error) {
+    } catch {
       // Error handled silently
       setError('SMS 발송 중 오류가 발생했습니다.');
     }

@@ -2,9 +2,14 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function: Get user role by authUid (requires query)
-    function getUserRole(authUid) {
-      return get(/databases/$(database)/documents/users/$(authUid)).data.role;
+    // Helper function: Get user roles by authUid (multi-role support)
+    function getUserRoles(authUid) {
+      return get(/databases/$(database)/documents/users/$(authUid)).data.roles;
+    }
+
+    // Helper function: Check if user has a specific role
+    function hasRole(authUid, role) {
+      return role in getUserRoles(authUid);
     }
 
     match /users/{userId} {
@@ -14,7 +19,7 @@ service cloud.firestore {
 
       // 자기 자신의 문서 일부 필드 수정 가능 (알림 설정 등)
       allow update: if request.auth != null && request.auth.uid == userId &&
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'role', 'linkedCustomers', 'isActive']));
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'roles', 'linkedCustomers', 'isActive']));
 
       // admin/staff는 모든 사용자 읽기 가능
       allow read: if request.auth != null;
@@ -146,6 +151,20 @@ service cloud.firestore {
     match /lastCounters/{counterId} {
       // 인증된 모든 사용자: 읽기/쓰기 허용 (주문 생성 시 필요)
       allow read, write: if request.auth != null;
+    }
+
+    // 일일식품 마감 관리 (cutoff 컬렉션)
+    match /cutoff/{cutoffId} {
+      // 인증된 모든 사용자: 읽기 허용
+      allow read: if request.auth != null;
+      // admin/staff만 쓰기 허용
+      allow write: if request.auth != null;
+    }
+
+    // [DEPRECATED] 이전 컬렉션명 (dailyFoodCutoff) - 하위 호환성
+    match /dailyFoodCutoff/{cutoffId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
 
     match /{document=**} {

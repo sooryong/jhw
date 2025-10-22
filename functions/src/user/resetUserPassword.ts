@@ -57,7 +57,7 @@ export const resetUserPassword = onCall(
         .limit(1)
         .get();
 
-      if (callerQuery.empty || callerQuery.docs[0].data()?.role !== 'admin') {
+      if (callerQuery.empty || !callerQuery.docs[0].data()?.roles?.includes('admin')) {
         throw new Error('Admin permission required');
       }
 

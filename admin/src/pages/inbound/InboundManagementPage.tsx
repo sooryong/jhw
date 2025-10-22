@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/inbound/DailyOrderInboundPage.tsx
- * 작성 날짜: 2025-10-06
- * 주요 내용: 일일주문 입고 메인 페이지
+ * 파일 경로: /src/pages/inbound/InboundManagementPage.tsx
+ * 작성 날짜: 2025-10-18
+ * 주요 내용: 입고 관리 메인 페이지
  */
 
 import { useState, useEffect } from 'react';
@@ -20,7 +20,8 @@ import { DataGrid } from '@mui/x-data-grid';
 import type { GridColDef } from '@mui/x-data-grid';
 import {
   MoveToInbox as InboundIcon,
-  Print as PrintIcon
+  Print as PrintIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import type { PurchaseOrder } from '../../types/purchaseOrder';
 import { getPurchaseOrderStatusLabel, getPurchaseOrderStatusColor } from '../../types/purchaseOrder';
@@ -28,7 +29,7 @@ import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebas
 import { db } from '../../config/firebase';
 import { openPrintCenter } from '../../utils/printUtils';
 
-const DailyOrderInboundPage = () => {
+const InboundManagementPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -249,7 +250,7 @@ const DailyOrderInboundPage = () => {
           >
             검수표 전체 인쇄
           </Button>
-          <Button variant="outlined" onClick={loadData}>
+          <Button variant="outlined" onClick={loadData} startIcon={<RefreshIcon />}>
             새로고침
           </Button>
         </Box>
@@ -319,4 +320,4 @@ const DailyOrderInboundPage = () => {
   );
 };
 
-export default DailyOrderInboundPage;
+export default InboundManagementPage;

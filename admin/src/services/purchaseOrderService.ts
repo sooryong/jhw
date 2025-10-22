@@ -108,8 +108,8 @@ class PurchaseOrderService {
       }
 
       // 일일확정 상태 조회 (v1.1)
-      const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-      const confirmationStatus = await dailyOrderCycleService.getStatus();
+      const { default: cutoffService } = await import('./cutoffService');
+      const cutoffInfo = await cutoffService.getInfo();
 
       // 매입주문 데이터 생성
       const purchaseOrder: PurchaseOrder = {
@@ -122,7 +122,7 @@ class PurchaseOrderService {
         orderItems: formData.orderItems,
         itemCount: formData.orderItems.length,
         category: formData.category,
-        confirmationStatus: confirmationStatus.isConfirmed ? 'additional' : 'regular',
+        confirmationStatus: cutoffInfo.status === 'closed' ? 'additional' : 'regular',
         status: 'placed',
         placedAt: Timestamp.now(),
         createdAt: Timestamp.now(),
@@ -697,14 +697,14 @@ class PurchaseOrderService {
     supplierId: string,
     category: string
   ): Promise<{ exists: boolean; purchaseOrderNumber?: string }> {
-    const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-    const status = await dailyOrderCycleService.getStatus();
+    const { default: cutoffService } = await import('./cutoffService');
+    const cutoffInfo = await cutoffService.getInfo();
 
-    if (!status.lastConfirmedAt) {
+    if (!cutoffInfo.closedAt) {
       return { exists: false };
     }
 
-    const confirmedTime = status.lastConfirmedAt;
+    const confirmedTime = cutoffInfo.closedAt;
     const startTime = new Date(confirmedTime.getTime() - 60000);
     const endTime = new Date(confirmedTime.getTime() + 60000);
 
@@ -778,12 +778,14 @@ class PurchaseOrderService {
         productId: product.productId,
         productName: product.productName,
         specification: product.specification || '',
-        quantity: product.totalQuantity
+        quantity: product.totalQuantity,
+        unitPrice: product.unitPrice || 0,
+        lineTotal: product.totalAmount || 0
       }));
 
       // 5. 일일확정 상태 조회 (v1.1)
-      const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-      const confirmationStatus = await dailyOrderCycleService.getStatus();
+      const { default: cutoffService } = await import('./cutoffService');
+      const cutoffInfo = await cutoffService.getInfo();
 
       // 6. 매입주문 데이터 생성
       const now = Timestamp.now();
@@ -791,7 +793,7 @@ class PurchaseOrderService {
         purchaseOrderNumber,
         supplierId: supplier.supplierId,
         category,
-        confirmationStatus: confirmationStatus.isConfirmed ? 'additional' : 'regular',
+        confirmationStatus: cutoffInfo.status === 'closed' ? 'additional' : 'regular',
         status,
         itemCount: orderItems.length,
         orderItems,
@@ -849,8 +851,8 @@ class PurchaseOrderService {
       const createdOrderIds: string[] = [];
 
       // 일일확정 상태 조회 (v1.1)
-      const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-      const confirmationStatus = await dailyOrderCycleService.getStatus();
+      const { default: cutoffService } = await import('./cutoffService');
+      const cutoffInfo = await cutoffService.getInfo();
 
       for (const supplier of suppliers) {
         // 매입주문번호 생성
@@ -875,7 +877,9 @@ class PurchaseOrderService {
           productName: product.productName,
           mainCategory: product.mainCategory || '',
           specification: product.specification || '',
-          quantity: product.totalQuantity
+          quantity: product.totalQuantity,
+          unitPrice: product.unitPrice || 0,
+          lineTotal: product.totalAmount || 0
         }));
 
         // 매입주문 데이터 생성 (placed 상태로 생성, SMS 발송 성공 시 confirmed로 변경)
@@ -884,7 +888,7 @@ class PurchaseOrderService {
           purchaseOrderNumber,
           supplierId: supplier.supplierId,
           category,
-          confirmationStatus: confirmationStatus.isConfirmed ? 'additional' : 'regular',
+          confirmationStatus: cutoffInfo.status === 'closed' ? 'additional' : 'regular',
           status: 'placed',
           itemCount: orderItems.length,
           orderItems,

@@ -4,7 +4,7 @@
  * 주요 내용: 수금 등록 페이지
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -67,14 +67,7 @@ const PaymentCreatePage = () => {
     }
   };
 
-  // 고객사 선택 시 미수금 조회
-  useEffect(() => {
-    if (selectedCustomer) {
-      loadCustomerBalance();
-    }
-  }, [selectedCustomer]);
-
-  const loadCustomerBalance = async () => {
+  const loadCustomerBalance = useCallback(async () => {
     if (!selectedCustomer) return;
 
     try {
@@ -85,7 +78,14 @@ const PaymentCreatePage = () => {
       console.error('계정 조회 실패:', error);
       setCurrentBalance(0);
     }
-  };
+  }, [selectedCustomer]);
+
+  // 고객사 선택 시 미수금 조회
+  useEffect(() => {
+    if (selectedCustomer) {
+      loadCustomerBalance();
+    }
+  }, [selectedCustomer, loadCustomerBalance]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -47,7 +47,7 @@ export const deleteUserAccount = onCall(
       // 호출자의 authUid로 문서 조회
       const callerQuery = await db.collection('users').where('authUid', '==', request.auth.uid).get();
 
-      if (callerQuery.empty || callerQuery.docs[0].data()?.role !== 'admin') {
+      if (callerQuery.empty || !callerQuery.docs[0].data()?.roles?.includes('admin')) {
         throw new Error('Admin permission required');
       }
 
@@ -67,20 +67,21 @@ export const deleteUserAccount = onCall(
       const targetUserData = targetUserDoc.data();
       const authUid = targetUserData?.authUid;
 
-      if (!authUid) {
-        throw new Error('User authUid not found');
+      // authUid가 있으면 Firebase Auth에서도 삭제
+      if (authUid) {
+        const auth = getAuth();
+        try {
+          await auth.deleteUser(authUid);
+          console.log('✅ Firebase Auth user deleted:', authUid);
+        } catch (authError) {
+          console.warn('⚠️ Firebase Auth user not found, continuing with Firestore deletion:', authError);
+        }
+      } else {
+        // authUid가 없는 경우 (supplier 전용 사용자)
+        console.log('ℹ️ No authUid - Firestore-only user (supplier), skipping Firebase Auth deletion');
       }
 
-      // Firebase Authentication 계정 삭제
-      const auth = getAuth();
-      try {
-        await auth.deleteUser(authUid);
-      } catch (authError) {
-        // Auth 계정이 없어도 Firestore 문서는 삭제 진행
-        console.warn('⚠️ Firebase Auth user not found, continuing with Firestore deletion:', authError);
-      }
-
-      // Firestore users 컬렉션 문서 삭제 (문서 ID = 휴대폰번호)
+      // Firestore users 컬렉션 문서 삭제 (모든 경우에 실행)
       await db.collection('users').doc(data.uid).delete();
 
       return {

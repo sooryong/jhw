@@ -4,7 +4,7 @@
  * 주요 내용: 고객사 사용자 관리 페이지
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -71,13 +71,7 @@ const CustomerUsersPage = () => {
   });
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (businessNumber) {
-      loadData();
-    }
-  }, [businessNumber]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!businessNumber) return;
 
     setLoading(true);
@@ -97,7 +91,13 @@ const CustomerUsersPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [businessNumber]);
+
+  useEffect(() => {
+    if (businessNumber) {
+      loadData();
+    }
+  }, [businessNumber, loadData]);
 
   const handleAddUser = async () => {
     if (!newUser.name || !newUser.mobile || !businessNumber) {

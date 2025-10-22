@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/outbound/DailyOrderOutboundPage.tsx
- * 작성 날짜: 2025-10-13
- * 주요 내용: 일일주문 출하 메인 페이지
+ * 파일 경로: /src/pages/outbound/OutboundManagementPage.tsx
+ * 작성 날짜: 2025-10-18
+ * 주요 내용: 출하 관리 메인 페이지
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -26,17 +26,19 @@ import type { GridColDef } from '@mui/x-data-grid';
 import {
   LocalShipping as OutboundIcon,
   Print as PrintIcon,
-  ErrorOutline as ErrorOutlineIcon,
-  CheckCircle as CheckCircleIcon
+  CheckCircle as CheckCircleIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import type { SaleOrder } from '../../types/saleOrder';
 import { collection, query, where, getDocs, orderBy, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { openPrintCenter } from '../../utils/printUtils';
-import dailySaleOrderFlowService from '../../services/dailySaleOrderFlowService';
+// import timeRangeService from '../../services/timeRangeService';
+import { useSaleOrderContext } from '../../contexts/SaleOrderContext';
 
-const DailyOrderOutboundPage = () => {
+const OutboundManagementPage = () => {
   const navigate = useNavigate();
+  const { cutoffInfo } = useSaleOrderContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
@@ -61,51 +63,21 @@ const DailyOrderOutboundPage = () => {
 
   // 실시간 데이터 감시 및 출하 완료 상태 자동 업데이트
   useEffect(() => {
-    let unsubscribeCycle: (() => void) | undefined;
     let unsubscribeOrders: (() => void) | undefined;
-    let resetAtTimestamp: Timestamp | null = null;
-    let isConfirmedValue = false;
 
     setLoading(true);
     setError(null);
 
-    // 1. 일일주문 사이클 상태 실시간 감시
-    const cycleRef = doc(db, 'dailyOrderCycles', 'current');
-    unsubscribeCycle = onSnapshot(
-      cycleRef,
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          isConfirmedValue = data.isConfirmed || false;
-          resetAtTimestamp = data.resetAt || Timestamp.fromDate(new Date(new Date().setHours(0, 0, 0, 0)));
+    // cutoffInfo가 없으면 기본값 사용
+    const cutoffOpenedAt = cutoffInfo.openedAt || new Date(new Date().setHours(0, 0, 0, 0));
+    const isCutoffClosed = cutoffInfo.status === 'closed';
 
-          // 사이클 상태가 변경되면 매출주문 리스너 재설정
-          if (unsubscribeOrders) {
-            unsubscribeOrders();
-          }
-          setupOrdersListener();
-        } else {
-          // 문서가 없으면 기본값 사용
-          isConfirmedValue = false;
-          resetAtTimestamp = Timestamp.fromDate(new Date(new Date().setHours(0, 0, 0, 0)));
-          setupOrdersListener();
-        }
-      },
-      (error) => {
-        console.error('Error watching cycle status:', error);
-        setError('일일주문 사이클 상태를 불러오는 중 오류가 발생했습니다.');
-        setLoading(false);
-      }
-    );
-
-    // 2. 매출주문 목록 실시간 감시
+    // 매출주문 목록 실시간 감시
     const setupOrdersListener = () => {
-      if (!resetAtTimestamp) return;
-
       const ordersQuery = query(
         collection(db, 'saleOrders'),
         where('status', 'in', ['confirmed', 'completed']),
-        where('placedAt', '>=', resetAtTimestamp),
+        where('placedAt', '>=', Timestamp.fromDate(cutoffOpenedAt)),
         orderBy('placedAt', 'desc')
       );
 
@@ -120,9 +92,9 @@ const DailyOrderOutboundPage = () => {
           setSaleOrders(orders);
 
           // 출하 완료 여부 확인:
-          // 정규 일일주문 마감 후 (isConfirmed === true) && confirmed 주문이 0개이면 출하 완료
+          // 마감 후 (cutoffStatus === 'closed') && confirmed 주문이 0개이면 출하 완료
           const confirmedCount = orders.filter(order => order.status === 'confirmed').length;
-          const allCompleted = isConfirmedValue && confirmedCount === 0;
+          const allCompleted = isCutoffClosed && confirmedCount === 0;
 
           setIsAllCompleted(allCompleted);
           setLoading(false);
@@ -136,12 +108,13 @@ const DailyOrderOutboundPage = () => {
       );
     };
 
+    setupOrdersListener();
+
     // 클린업: 컴포넌트 언마운트 시 리스너 해제
     return () => {
-      if (unsubscribeCycle) unsubscribeCycle();
       if (unsubscribeOrders) unsubscribeOrders();
     };
-  }, []);
+  }, [cutoffInfo]);
 
   // 추가 주문 발생 시 모달 자동 닫기만 처리 (자동 열기 제거)
   useEffect(() => {
@@ -158,16 +131,15 @@ const DailyOrderOutboundPage = () => {
     setError(null);
 
     try {
-      // 현재 주문 사이클의 resetAt 조회
-      const flowStatus = await dailySaleOrderFlowService.getStatus();
-      const resetAtDate = flowStatus.resetAt || new Date(new Date().setHours(0, 0, 0, 0));
-      const resetAt = Timestamp.fromDate(resetAtDate);
+      // cutoffInfo 사용
+      const cutoffOpenedAt = cutoffInfo.openedAt || new Date(new Date().setHours(0, 0, 0, 0));
+      const isCutoffClosed = cutoffInfo.status === 'closed';
 
-      // confirmed와 completed 상태의 현재 사이클 주문만 조회
+      // confirmed와 completed 상태의 현재 범위 주문만 조회
       const q = query(
         collection(db, 'saleOrders'),
         where('status', 'in', ['confirmed', 'completed']),
-        where('placedAt', '>=', resetAt),
+        where('placedAt', '>=', Timestamp.fromDate(cutoffOpenedAt)),
         orderBy('placedAt', 'desc')
       );
 
@@ -181,7 +153,7 @@ const DailyOrderOutboundPage = () => {
 
       // 출하 완료 여부 확인
       const confirmedCount = orders.filter(order => order.status === 'confirmed').length;
-      setIsAllCompleted(flowStatus.isConfirmed && confirmedCount === 0);
+      setIsAllCompleted(isCutoffClosed && confirmedCount === 0);
     } catch (err) {
       console.error('Error loading sale orders:', err);
       setError('출하 대기 매출주문을 불러오는 중 오류가 발생했습니다.');
@@ -238,7 +210,7 @@ const DailyOrderOutboundPage = () => {
     }
   };
 
-  // 일일주문 마감 버튼 클릭 핸들러
+  // 주문 마감 버튼 클릭 핸들러
   const handleOpenCompletionModal = () => {
     if (!isAllCompleted) {
       showSnackbar('아직 출하되지 않은 주문이 있습니다.', 'warning');
@@ -257,16 +229,13 @@ const DailyOrderOutboundPage = () => {
     setLoading(true);
 
     try {
-      // resetAt 갱신 (일일주문 마감)
-      await dailySaleOrderFlowService.reset();
-
       // 데이터 새로고침
       await loadData();
 
-      showSnackbar('일일주문 출하가 완료되었습니다. 새로운 주문 사이클이 시작됩니다.', 'success');
+      showSnackbar('모든 출하가 완료되었습니다.', 'success');
     } catch (error) {
       console.error('Error completing outbound:', error);
-      showSnackbar('출하 완료 처리 중 오류가 발생했습니다.', 'error');
+      showSnackbar('출하 완료 확인 중 오류가 발생했습니다.', 'error');
     } finally {
       setLoading(false);
     }
@@ -424,7 +393,7 @@ const DailyOrderOutboundPage = () => {
           >
             검수표 전체 인쇄
           </Button>
-          <Button variant="outlined" onClick={loadData}>
+          <Button variant="outlined" onClick={loadData} startIcon={<RefreshIcon />}>
             새로고침
           </Button>
         </Box>
@@ -523,7 +492,7 @@ const DailyOrderOutboundPage = () => {
         <DialogContent sx={{ pt: 3, pb: 2 }}>
           <Alert severity="info" sx={{ mb: 2 }}>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              일일주문 출하를 완료하고 새로운 사이클을 시작하세요.
+              주문 출하를 완료하고 새로운 사이클을 시작하세요.
             </Typography>
           </Alert>
           <Box sx={{ mb: 2 }}>
@@ -531,7 +500,7 @@ const DailyOrderOutboundPage = () => {
               ✓ 모든 매출주문의 출하가 완료되었습니다.
             </Typography>
             <Typography variant="body1" sx={{ mb: 1.5, color: 'text.primary' }}>
-              ✓ 일일주문 사이클이 마감되고 새로운 사이클이 시작됩니다.
+              ✓ 주문 사이클이 마감되고 새로운 사이클이 시작됩니다.
             </Typography>
             <Typography variant="body1" sx={{ mb: 1.5, color: 'text.primary' }}>
               ✓ 이후 생성되는 주문은 다음 사이클의 정규 주문으로 분류됩니다.
@@ -564,12 +533,12 @@ const DailyOrderOutboundPage = () => {
               fontWeight: 600
             }}
           >
-            일일주문 마감
+            주문 마감
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* 우측하단 일일주문 마감 버튼 */}
+      {/* 우측하단 주문 마감 버튼 */}
       <Button
         variant="contained"
         color="error"
@@ -589,7 +558,7 @@ const DailyOrderOutboundPage = () => {
           }
         }}
       >
-        일일주문 마감
+        주문 마감
       </Button>
 
       {/* Snackbar 알림 */}
@@ -607,4 +576,4 @@ const DailyOrderOutboundPage = () => {
   );
 };
 
-export default DailyOrderOutboundPage;
+export default OutboundManagementPage;

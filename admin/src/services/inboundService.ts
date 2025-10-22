@@ -1,6 +1,6 @@
 /**
  * 파일 경로: /src/services/inboundService.ts
- * 작성 날짜: 2025-10-06
+ * 작성 날짜: 2025-10-18
  * 주요 내용: 입고 관리 서비스
  */
 
@@ -20,26 +20,23 @@ import type { PurchaseLedger, PurchaseLedgerItem } from '../types/purchaseLedger
 import type { Product } from '../types/product';
 import type { SupplierAccount } from '../types/supplierAccount';
 import { purchaseOrderService } from './purchaseOrderService';
+import timeRangeService from './timeRangeService';
 
 /**
- * 입고 대기 중인 매입주문 조회 (시간 기반 필터링, v1.1)
+ * 입고 대기 중인 매입주문 조회 (시간 기반 필터링)
  * - confirmed와 completed 상태 모두 조회
- * - resetAt부터 현재까지 생성된 매입주문만 표시
+ * - 현재 범위 시작 시간부터 현재까지 생성된 매입주문만 표시
  */
 export const getConfirmedPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
   try {
-    // 일일확정 상태 조회
-    const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-    const confirmationStatus = await dailyOrderCycleService.getStatus();
+    // timeRangeService에서 기준 시간 가져오기
+    const rangeStart = await timeRangeService.getCurrentRangeStart();
 
-    // resetAt이 없으면 오늘 00:00 사용
-    const resetAt = confirmationStatus.resetAt || new Date(new Date().setHours(0, 0, 0, 0));
-
-    // resetAt 이후의 confirmed/completed 매입주문 조회
+    // 기준 시간 이후의 confirmed/completed 매입주문 조회
     const q = query(
       collection(db, 'purchaseOrders'),
       where('status', 'in', ['confirmed', 'completed']),
-      where('placedAt', '>=', Timestamp.fromDate(resetAt)),
+      where('placedAt', '>=', Timestamp.fromDate(rangeStart)),
       orderBy('placedAt', 'desc')
     );
 

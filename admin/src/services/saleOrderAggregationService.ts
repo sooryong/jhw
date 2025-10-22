@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/services/orderAggregationService.ts
- * 작성 날짜: 2025-10-04
- * 주요 내용: 주문 집계 서비스
+ * 파일 경로: /src/services/saleOrderAggregationService.ts
+ * 작성 날짜: 2025-10-18
+ * 주요 내용: 매출주문 집계 서비스
  * 관련 데이터: saleOrders, products, suppliers 컬렉션
  */
 
@@ -11,15 +11,15 @@ import type {
   OrderAggregationData,
   CategoryAggregation,
   SupplierAggregation,
-  DailyFoodAggregation,
   AggregationFilter,
   StatusAggregation
 } from '../types/orderAggregation';
 import type { SaleOrder } from '../types/saleOrder';
 import type { Product } from '../types/product';
 import type { Company } from '../types/company';
+import timeRangeService from './timeRangeService';
 
-class OrderAggregationService {
+class SaleOrderAggregationService {
   /**
    * 특정 날짜의 매출주문 조회
    */
@@ -61,10 +61,8 @@ class OrderAggregationService {
    */
   async getActiveOrdersFromTime(fromTime: Date | null): Promise<SaleOrder[]> {
     if (!fromTime) {
-      // fromTime이 없으면 오늘 00:00 기준
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      fromTime = today;
+      // fromTime이 없으면 timeRangeService에서 기준 시간 가져오기
+      fromTime = await timeRangeService.getCurrentRangeStart();
     }
 
     const q = query(
@@ -145,36 +143,17 @@ class OrderAggregationService {
   }
 
   /**
-   * 카테고리별 주문 집계 (시간 기반) - v0.98
+   * 카테고리별 주문 집계
    */
   async aggregateByCategory(
     orders: SaleOrder[],
-    filter?: AggregationFilter,
-    confirmationDates?: { resetAt: Date | null; lastConfirmedAt: Date | null; isConfirmed?: boolean }
+    filter?: AggregationFilter
   ): Promise<{ [category: string]: CategoryAggregation }> {
     // 필터 적용
     let filteredOrders = orders;
     if (filter?.status && filter.status !== 'all') {
       filteredOrders = orders.filter(order => order.status === filter.status);
     }
-
-    // confirmationStatus 조회 (전달되지 않은 경우)
-    let isConfirmed = false;
-    if (!confirmationDates) {
-      const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-      const confirmationStatus = await dailyOrderCycleService.getStatus();
-      confirmationDates = {
-        resetAt: confirmationStatus.resetAt,
-        lastConfirmedAt: confirmationStatus.lastConfirmedAt,
-        isConfirmed: confirmationStatus.isConfirmed
-      };
-      isConfirmed = confirmationStatus.isConfirmed;
-    } else {
-      isConfirmed = confirmationDates.isConfirmed || false;
-    }
-
-    const { resetAt, lastConfirmedAt } = confirmationDates;
-    const now = new Date();
 
     // 모든 상품 ID 추출
     const productIds = [
@@ -229,41 +208,14 @@ class OrderAggregationService {
 
         const categoryAgg = categoryMap.get(category)!;
 
-        // 주문 카운트 (중복 방지를 위해 Set 사용 필요 - 추후 개선)
+        // 주문 카운트
         categoryAgg.totalOrders++;
-
-        // 시간 기반 분류 (정규/추가)
-        const placedAt = order.placedAt.toDate();
-        let isRegular = false;
-        let isAdditional = false;
-
-        if (!isConfirmed) {
-          // 미확정 상태: resetAt 이후 모든 주문이 정규
-          isRegular = (resetAt && placedAt >= resetAt) || false;
-        } else {
-          // 확정 상태: 정규 + 추가 구분
-          isRegular = (resetAt && lastConfirmedAt &&
-                      placedAt >= resetAt && placedAt < lastConfirmedAt) || false;
-          isAdditional = (lastConfirmedAt && placedAt >= lastConfirmedAt && placedAt < now) || false;
-        }
-
-        if (isRegular) {
-          categoryAgg.placedOrders++;
-          categoryAgg.placedAmount += item.lineTotal;
-        } else if (isAdditional) {
-          categoryAgg.confirmedOrders++;
-          categoryAgg.confirmedAmount += item.lineTotal;
-        }
-
         categoryAgg.totalAmount += item.lineTotal;
 
         // 공급사별 집계
         let supplierAgg = categoryAgg.suppliers.find(s => s.supplierId === supplierId);
         if (!supplierAgg) {
-          // supplierMap의 키는 하이픈 포함 사업자번호
           const supplier = supplierMap.get(supplierId);
-          // smsRecipients는 userId 기반으로 조회해야 하므로 여기서는 빈 배열로 초기화
-          // SMS 발송 시 userService를 통해 primaryUserId/secondaryUserId로 사용자 조회
           const smsRecipients: unknown[] = [];
 
           supplierAgg = {
@@ -293,23 +245,14 @@ class OrderAggregationService {
             placedAmount: 0,
             confirmedAmount: 0,
             totalAmount: 0,
-            unitPrice: product.purchasePrice ?? 0,
+            unitPrice: product.purchasePrice ?? product.latestPurchasePrice ?? 0,
             stockQuantity: product.stockQuantity ?? 0,
             orderCount: 0
           };
           supplierAgg.products.push(productAgg);
         }
 
-        // 수량 및 금액 집계 (시간 기반)
-        if (isRegular) {
-          productAgg.placedQuantity += item.quantity;
-          productAgg.placedAmount += item.lineTotal;
-          supplierAgg.totalPlacedQuantity += item.quantity;
-        } else if (isAdditional) {
-          productAgg.confirmedQuantity += item.quantity;
-          productAgg.confirmedAmount += item.lineTotal;
-          supplierAgg.totalConfirmedQuantity += item.quantity;
-        }
+        // 수량 및 금액 집계
         productAgg.totalQuantity += item.quantity;
         productAgg.totalAmount += item.lineTotal;
         productAgg.orderCount++;
@@ -328,42 +271,6 @@ class OrderAggregationService {
     });
 
     return result;
-  }
-
-  /**
-   * 일일식품 placed + regular 주문 집계 (확정용)
-   */
-  async aggregateDailyFoodForConfirmation(date: Date): Promise<DailyFoodAggregation> {
-    const orders = await this.getSaleOrdersByDate(date);
-
-    // placed 상태이면서 confirmationStatus가 regular인 주문만 필터
-    const placedRegularOrders = orders.filter(
-      order => order.status === 'placed' && order.orderPhase === 'regular'
-    );
-
-    // 카테고리별 집계
-    const categoryAggregations = await this.aggregateByCategory(placedRegularOrders, {
-      date,
-      status: 'all'
-    });
-
-    const dailyFoodAgg = categoryAggregations['일일식품'];
-
-    if (!dailyFoodAgg) {
-      return {
-        placedCount: 0,
-        placedAmount: 0,
-        suppliers: [],
-        isConfirmed: false
-      };
-    }
-
-    return {
-      placedCount: dailyFoodAgg.placedOrders,
-      placedAmount: dailyFoodAgg.placedAmount,
-      suppliers: dailyFoodAgg.suppliers,
-      isConfirmed: false  // 확정 여부는 별도 확인 필요
-    };
   }
 
   /**
@@ -390,12 +297,10 @@ class OrderAggregationService {
       } else if (order.status === 'rejected') {
         total.rejected.count++;
         total.rejected.amount += order.finalAmount;
-      } else if (order.orderPhase === 'regular') {
+      } else {
+        // 일반 주문은 regular로 집계
         total.regular.count++;
         total.regular.amount += order.finalAmount;
-      } else if (order.orderPhase === 'additional') {
-        total.additional.count++;
-        total.additional.amount += order.finalAmount;
       }
     });
 
@@ -407,34 +312,24 @@ class OrderAggregationService {
   }
 
   /**
-   * Active 주문 집계 데이터 생성 (시간 기반 집계) - v0.98
+   * Active 주문 집계 데이터 생성
    */
   async getActiveOrderAggregationData(): Promise<OrderAggregationData> {
-    // dailyOrderCycles 조회
-    const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-    const confirmationStatus = await dailyOrderCycleService.getStatus();
+    // timeRangeService에서 기준 시간 가져오기
+    const rangeStart = await timeRangeService.getCurrentRangeStart();
 
-    const resetAt = confirmationStatus.resetAt;                  // 리셋 시간 (정규 시작)
-    const lastConfirmedAt = confirmationStatus.lastConfirmedAt;  // 확정 시간 (정규 종료)
-    const isConfirmed = confirmationStatus.isConfirmed;          // 확정 상태
-    const now = new Date();
+    // 기준 시간 이후의 주문만 조회
+    const orders = await this.getActiveOrdersFromTime(rangeStart);
 
-    // resetAt 이후의 주문만 조회
-    const orders = await this.getActiveOrdersFromTime(resetAt);
+    // 카테고리별 집계
+    const categories = await this.aggregateByCategory(orders);
 
-    // 카테고리별 집계 (confirmationDates 전달)
-    const categories = await this.aggregateByCategory(orders, undefined, {
-      resetAt,
-      lastConfirmedAt,
-      isConfirmed
-    });
-
-    // 시간 기반 통계 계산
+    // 통계 계산
     const total: StatusAggregation = {
-      regular: { count: 0, amount: 0, quantity: 0 },      // 정규 주문 (resetAt~lastConfirmedAt)
-      additional: { count: 0, amount: 0, quantity: 0 },    // 추가 주문 (lastConfirmedAt~now)
-      pended: { count: 0, amount: 0 },      // 보류 주문
-      rejected: { count: 0, amount: 0 }      // 거절 주문
+      regular: { count: 0, amount: 0, quantity: 0 },
+      additional: { count: 0, amount: 0, quantity: 0 },
+      pended: { count: 0, amount: 0 },
+      rejected: { count: 0, amount: 0 }
     };
 
     orders.forEach(order => {
@@ -445,46 +340,14 @@ class OrderAggregationService {
         total.rejected.count++;
         total.rejected.amount += order.finalAmount;
       } else {
-        // 시간 기반 분류
-        const placedAt = order.placedAt.toDate();
-
-        if (!isConfirmed) {
-          // 미확정 상태: resetAt 이후 모든 주문이 정규만 집계
-          if (resetAt && placedAt >= resetAt) {
-            total.regular.count++;
-            total.regular.amount += order.finalAmount;
-            // 수량 집계
-            if (order.orderItems && Array.isArray(order.orderItems)) {
-              order.orderItems.forEach(item => {
-                total.regular.quantity! += item.quantity;
-              });
-            }
-          }
-        } else {
-          // 확정 상태: 정규 + 추가 모두 집계
-          // 정규 주문: resetAt <= placedAt < lastConfirmedAt
-          if (resetAt && lastConfirmedAt &&
-              placedAt >= resetAt && placedAt < lastConfirmedAt) {
-            total.regular.count++;
-            total.regular.amount += order.finalAmount;
-            // 수량 집계
-            if (order.orderItems && Array.isArray(order.orderItems)) {
-              order.orderItems.forEach(item => {
-                total.regular.quantity! += item.quantity;
-              });
-            }
-          }
-          // 추가 주문: lastConfirmedAt <= placedAt < now
-          else if (lastConfirmedAt && placedAt >= lastConfirmedAt && placedAt < now) {
-            total.additional.count++;
-            total.additional.amount += order.finalAmount;
-            // 수량 집계
-            if (order.orderItems && Array.isArray(order.orderItems)) {
-              order.orderItems.forEach(item => {
-                total.additional.quantity! += item.quantity;
-              });
-            }
-          }
+        // 모든 일반 주문은 regular로 통합
+        total.regular.count++;
+        total.regular.amount += order.finalAmount;
+        // 수량 집계
+        if (order.orderItems && Array.isArray(order.orderItems)) {
+          order.orderItems.forEach(item => {
+            total.regular.quantity! += item.quantity;
+          });
         }
       }
     });
@@ -493,12 +356,12 @@ class OrderAggregationService {
       total,
       categories,
       orders, // 원본 주문 데이터 포함
-      date: now // 현재 시간 기준
+      date: new Date() // 현재 시간 기준
     };
   }
 
   /**
-   * 공급사별 매입주문 데이터 생성 (일일식품 확정용)
+   * 공급사별 매입주문 데이터 생성
    */
   async generatePurchaseOrderData(
     suppliers: SupplierAggregation[]
@@ -545,12 +408,9 @@ class OrderAggregationService {
     totalQuantity: number;
     totalAmount: number;
   }> {
-    // resetAt 이후의 주문만 조회 (시간 기반 집계)
-    const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-    const confirmationStatus = await dailyOrderCycleService.getStatus();
-    const resetAt = confirmationStatus.resetAt || new Date();
-
-    const activeOrders = await this.getActiveOrdersFromTime(resetAt);
+    // timeRangeService에서 기준 시간 가져오기
+    const rangeStart = await timeRangeService.getCurrentRangeStart();
+    const activeOrders = await this.getActiveOrdersFromTime(rangeStart);
 
     const orderDetails: Array<{
       customerName: string;
@@ -600,5 +460,5 @@ class OrderAggregationService {
 }
 
 // 싱글톤 인스턴스
-export const orderAggregationService = new OrderAggregationService();
-export default orderAggregationService;
+export const saleOrderAggregationService = new SaleOrderAggregationService();
+export default saleOrderAggregationService;

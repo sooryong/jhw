@@ -61,6 +61,11 @@ const ProductListPage: React.FC = () => {
     pageSize: 10
   });
 
+  // 정렬 상태
+  const [sortModel, setSortModel] = useState([
+    { field: 'productName', sort: 'asc' as const },
+  ]);
+
   // 필터
   const [filter, setFilter] = useState<ProductFilter>({
     isActive: true,
@@ -90,7 +95,7 @@ const ProductListPage: React.FC = () => {
       setProducts(productData);
       setTotalCount(countData);
 
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 오류 처리: 상품 목록 로드 실패
       setError('상품 목록을 불러올 수 없습니다.');
@@ -104,7 +109,7 @@ const ProductListPage: React.FC = () => {
     try {
       const supplierData = await supplierService.getSuppliers({ isActive: true });
       setSuppliers(supplierData);
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 오류 처리: 공급사 목록 로드 실패
     }
@@ -115,7 +120,7 @@ const ProductListPage: React.FC = () => {
     try {
       const categoryData = await settingsService.getProductCategories();
       setCategories(categoryData);
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 오류 처리: 카테고리 목록 로드 실패
     }
@@ -522,12 +527,13 @@ const ProductListPage: React.FC = () => {
             getRowId={(row) => row.productId || ''}
             loading={loading}
             disableRowSelectionOnClick
-            disableColumnMenu
             paginationMode="server"
-            pageSizeOptions={[10, 20, 30]}
+            pageSizeOptions={[10, 20, 30, 50]}
             paginationModel={paginationModel}
             onPaginationModelChange={handlePaginationModelChange}
             rowCount={totalCount}
+            sortModel={sortModel}
+            onSortModelChange={setSortModel}
             onRowClick={(params) => handleViewProduct(params.id as string)}
             sx={{
               '& .MuiDataGrid-row:hover': {

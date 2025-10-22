@@ -29,6 +29,16 @@ import { useAuth } from '../../contexts/AuthContext';
 import { customerService } from '../../services/customerService';
 import { getOrderStatsByCustomers, type OrderStatsByCustomer } from '../../services/saleOrderService';
 import type { Customer } from '../../types/company';
+import type { UserRole } from '../../types/user';
+
+// 역할 우선순위 계산 (admin > staff > customer > supplier)
+const getPrimaryRole = (roles: UserRole[]): UserRole => {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('staff')) return 'staff';
+  if (roles.includes('customer')) return 'customer';
+  if (roles.includes('supplier')) return 'supplier';
+  return 'staff'; // 기본값
+};
 
 const CustomerSelectionPage: React.FC = () => {
   const navigate = useNavigate();
@@ -50,7 +60,7 @@ const CustomerSelectionPage: React.FC = () => {
       let businessNumbers: string[] = [];
 
       // Admin/Staff: 모든 고객사 조회
-      if (user?.role === 'admin' || user?.role === 'staff') {
+      if (user?.roles.includes('admin') || user?.roles.includes('staff')) {
         const allCustomers = await customerService.getCustomers({ isActive: true });
         validCustomers = allCustomers;
         businessNumbers = allCustomers.map(c => c.businessNumber);
@@ -92,7 +102,7 @@ const CustomerSelectionPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [user?.role, getAvailableCustomers, navigate]);
+  }, [user?.roles, getAvailableCustomers, navigate]);
 
   // 데이터 로드
   useEffect(() => {
@@ -184,9 +194,9 @@ const CustomerSelectionPage: React.FC = () => {
 
         {/* 하단: 설명문 (전체 너비) */}
         <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-          {user.role === 'customer'
+          {user.roles.includes('customer')
             ? `${user.name}님, 쇼핑몰을 이용할 고객사를 선택해주세요.`
-            : `${user.name}님 (${user.role}), 대리 쇼핑할 고객사를 선택해주세요.`
+            : `${user.name}님 (${getPrimaryRole(user.roles)}), 대리 쇼핑할 고객사를 선택해주세요.`
           }
           {isSMSRecipientUser() && ` 📱 SMS 수신자로 등록된 고객사: ${getAvailableCustomers().length}개`}
         </Typography>

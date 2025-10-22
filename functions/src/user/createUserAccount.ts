@@ -11,8 +11,9 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 interface CreateUserRequest {
   name: string;
   mobile: string; // 정규화된 휴대폰번호 (숫자만)
-  role: 'admin' | 'staff' | 'customer';
+  roles: ('admin' | 'staff' | 'customer' | 'supplier')[]; // 다중 역할 지원
   linkedCustomers?: string[]; // customer 역할일 경우 연결된 고객사 사업자번호 배열
+  linkedSuppliers?: string[]; // supplier 역할일 경우 연결된 공급사 사업자번호 배열
   isActive?: boolean;
   requiresPasswordChange?: boolean;
 }
@@ -101,7 +102,7 @@ export const createUserAccount = onRequest(
         .limit(1)
         .get();
 
-      if (callerQuery.empty || callerQuery.docs[0].data()?.role !== 'admin') {
+      if (callerQuery.empty || !callerQuery.docs[0].data()?.roles?.includes('admin')) {
         response.set('Access-Control-Allow-Origin', '*');
         response.status(403).json({
           success: false,
@@ -113,11 +114,11 @@ export const createUserAccount = onRequest(
       // 요청 데이터 검증
       const userData = request.body as CreateUserRequest;
 
-      if (!userData.name || !userData.mobile || !userData.role) {
+      if (!userData.name || !userData.mobile || !userData.roles || userData.roles.length === 0) {
         response.set('Access-Control-Allow-Origin', '*');
         response.status(400).json({
           success: false,
-          error: 'Missing required fields: name, mobile, role'
+          error: 'Missing required fields: name, mobile, roles'
         } as CreateUserResponse);
         return;
       }
@@ -167,7 +168,7 @@ export const createUserAccount = onRequest(
         authUid: userRecord.uid, // Firebase Auth UID 저장
         name: userData.name,
         mobile: userData.mobile,
-        role: userData.role,
+        roles: userData.roles, // 다중 역할 배열 저장
         isActive: userData.isActive ?? true,
         requiresPasswordChange: userData.requiresPasswordChange ?? true,
         createdAt: FieldValue.serverTimestamp(),
@@ -175,9 +176,14 @@ export const createUserAccount = onRequest(
         passwordChangedAt: null
       };
 
-      // customer 역할인 경우 linkedCustomers 추가
-      if (userData.role === 'customer') {
+      // customer 역할이 포함된 경우 linkedCustomers 추가
+      if (userData.roles.includes('customer')) {
         userDocData.linkedCustomers = userData.linkedCustomers || [];
+      }
+
+      // supplier 역할이 포함된 경우 linkedSuppliers 추가
+      if (userData.roles.includes('supplier')) {
+        userDocData.linkedSuppliers = userData.linkedSuppliers || [];
       }
 
       // 휴대폰번호를 문서 ID로 사용

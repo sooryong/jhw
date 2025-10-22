@@ -37,7 +37,6 @@ interface ProductAggregationDetail {
     orderDate: unknown;
     quantity: number;
     amount: number;
-    orderPhase: 'regular' | 'additional';
   }>;
 }
 
@@ -56,21 +55,6 @@ const ProductAggregationDetailDialog = ({
 
   // 주문 목록 컬럼 정의
   const orderColumns: GridColDef[] = [
-    {
-      field: 'orderPhase',
-      headerName: '구분',
-      flex: 0.10,
-      minWidth: 80,
-      align: 'center',
-      headerAlign: 'center',
-      renderCell: (params) => (
-        <Chip
-          label={params.value === 'regular' ? '정규' : '추가'}
-          color={params.value === 'regular' ? 'primary' : 'secondary'}
-          size="small"
-        />
-      )
-    },
     {
       field: 'orderNumber',
       headerName: '주문번호',

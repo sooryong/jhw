@@ -7,6 +7,27 @@
 
 import type { UserRole } from '../types/user';
 
+// 역할 우선순위 정의 (숫자가 낮을수록 높은 우선순위)
+const ROLE_PRIORITY: Record<UserRole, number> = {
+  'admin': 0,
+  'staff': 1,
+  'customer': 2,
+  'supplier': 3,
+};
+
+/**
+ * 역할 배열에서 가장 우선순위가 높은 역할 반환
+ * Admin 플랫폼: admin > staff
+ * Shop 플랫폼: admin > staff > customer
+ */
+export const getPrimaryRole = (roles: UserRole[]): UserRole => {
+  if (!roles || roles.length === 0) return 'staff';
+
+  // 우선순위 순으로 정렬하고 첫 번째 반환
+  const sorted = [...roles].sort((a, b) => ROLE_PRIORITY[a] - ROLE_PRIORITY[b]);
+  return sorted[0];
+};
+
 // 권한 정의
 export type Permission =
   // 시스템 설정
@@ -212,4 +233,42 @@ export const canAccessPath = (role: UserRole, path: string): boolean => {
     return true; // 규칙이 없으면 기본적으로 허용
   }
   return hasAnyPermission(role, menuRule.requiredPermissions);
+};
+
+// ===== 다중 역할 지원 함수들 =====
+
+/**
+ * 여러 역할 중 하나라도 특정 권한을 가지고 있는지 확인
+ */
+export const hasPermissionMultiRole = (roles: UserRole[], permission: Permission): boolean => {
+  return roles.some(role => hasPermission(role, permission));
+};
+
+/**
+ * 여러 역할 중 하나라도 특정 권한들 중 하나를 가지고 있는지 확인
+ */
+export const hasAnyPermissionMultiRole = (roles: UserRole[], permissions: Permission[]): boolean => {
+  return roles.some(role => hasAnyPermission(role, permissions));
+};
+
+/**
+ * 여러 역할을 합쳐서 모든 권한을 가지고 있는지 확인
+ */
+export const hasAllPermissionsMultiRole = (roles: UserRole[], permissions: Permission[]): boolean => {
+  return permissions.every(permission => hasPermissionMultiRole(roles, permission));
+};
+
+/**
+ * 여러 역할 중 하나라도 특정 경로에 접근할 수 있는지 확인
+ */
+export const canAccessPathMultiRole = (roles: UserRole[], path: string): boolean => {
+  return roles.some(role => canAccessPath(role, path));
+};
+
+/**
+ * 여러 역할의 모든 권한 가져오기 (중복 제거)
+ */
+export const getMultiRolePermissions = (roles: UserRole[]): Permission[] => {
+  const allPermissions = roles.flatMap(role => getRolePermissions(role));
+  return Array.from(new Set(allPermissions));
 };

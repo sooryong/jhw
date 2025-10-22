@@ -89,7 +89,7 @@ const ProductAddPage: React.FC = () => {
           productCode: nextCode,
           salePrices: createDefaultSalePrices(0, types)
         }));
-      } catch (error) {
+      } catch {
       // Error handled silently
         // 오류 처리: 데이터 로드 실패
       }
@@ -173,7 +173,7 @@ const ProductAddPage: React.FC = () => {
       });
       setErrors({});
       setSubmitError(null);
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 코드 로드 실패 시 undefined로 설정
       setFormData({

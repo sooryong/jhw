@@ -25,7 +25,7 @@ import {
   Chip
 } from '@mui/material';
 import { format } from 'date-fns';
-import orderAggregationService from '../../services/orderAggregationService';
+import dailyFoodPurchaseAggregationService from '../../services/dailyFoodPurchaseAggregationService';
 import { formatCurrency } from '../../utils/formatUtils';
 
 interface ProductOrderDetailDialogProps {
@@ -63,7 +63,7 @@ const ProductOrderDetailDialog = ({
     setError(null);
 
     try {
-      const result = await orderAggregationService.getProductOrderDetails(productId);
+      const result = await dailyFoodPurchaseAggregationService.getProductOrderDetails(productId);
       setData(result);
     } catch (err) {
       console.error('Error loading product order details:', err);

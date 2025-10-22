@@ -19,6 +19,16 @@ import { getUserByAuthUid } from '../services/userService';
 import type { Permission } from '../utils/rbac';
 import * as rbac from '../utils/rbac';
 import type { NormalizedMobile, NormalizedBusinessNumber } from '../types/phoneNumber';
+import type { UserRole } from '../types/user';
+
+// 역할 우선순위 계산 (admin > staff > customer > supplier)
+const getPrimaryRole = (roles: UserRole[]): UserRole => {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('staff')) return 'staff';
+  if (roles.includes('customer')) return 'customer';
+  if (roles.includes('supplier')) return 'supplier';
+  return 'staff'; // 기본값
+};
 
 // 프로바이더 컴포넌트
 interface AuthProviderProps {
@@ -86,7 +96,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
           if (jwsUser) {
             // SMS 수신자 정보 추가 조회 (customer 역할인 경우)
-            if (jwsUser.role === 'customer') {
+            if (jwsUser.roles.includes('customer')) {
               try {
                 const smsResult = await customerLinkService.findCustomersBySMSRecipient(jwsUser.mobile);
                 if (smsResult) {
@@ -174,8 +184,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error('비활성화된 계정입니다.\n\n관리자에게 문의하세요.');
       }
 
+      // 역할 확인: admin, staff, customer만 쇼핑몰 로그인 허용
+      // - admin/staff: 대리 주문용 로그인 허용
+      // - customer: 일반 주문용 로그인 허용
+      // - supplier: 로그인 차단 (SMS 수신만 가능)
+      const hasAllowedRole = jwsUser.roles.includes('admin')
+        || jwsUser.roles.includes('staff')
+        || jwsUser.roles.includes('customer');
+
+      const hasOnlySupplierRole = jwsUser.roles.includes('supplier')
+        && !jwsUser.roles.includes('admin')
+        && !jwsUser.roles.includes('staff')
+        && !jwsUser.roles.includes('customer');
+
+      // supplier만 있는 경우 차단
+      if (hasOnlySupplierRole) {
+        await signOut(auth);
+        throw new Error('공급사 담당자는 쇼핑몰 로그인이 제한되어 있습니다.\n\n문의사항은 관리자에게 연락해주세요.');
+      }
+
+      // 허용되지 않은 역할인 경우 차단 (안전장치)
+      if (!hasAllowedRole) {
+        await signOut(auth);
+        throw new Error('쇼핑몰 접근 권한이 없습니다.\n\n관리자에게 문의하세요.');
+      }
+
       // SMS 수신자 정보 추가 조회 (customer 역할인 경우)
-      if (jwsUser.role === 'customer') {
+      if (jwsUser.roles.includes('customer')) {
         try {
           const smsResult = await customerLinkService.findCustomersBySMSRecipient(jwsUser.mobile);
           if (smsResult) {
@@ -217,36 +252,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // 역할 확인 메서드
   const isAdmin = (): boolean => {
-    return user?.role === 'admin';
+    return user?.roles.includes('admin') ?? false;
   };
 
   const isStaff = (): boolean => {
-    return user?.role === 'staff';
+    return user?.roles.includes('staff') ?? false;
   };
 
   const isCustomer = (): boolean => {
-    return user?.role === 'customer';
+    return user?.roles.includes('customer') ?? false;
   };
 
   // 세분화된 권한 확인 메서드
   const hasPermission = (permission: Permission): boolean => {
     if (!user) return false;
-    return rbac.hasPermission(user.role, permission);
+    const primaryRole = getPrimaryRole(user.roles);
+    return rbac.hasPermission(primaryRole, permission);
   };
 
   const hasAnyPermission = (permissions: Permission[]): boolean => {
     if (!user) return false;
-    return rbac.hasAnyPermission(user.role, permissions);
+    const primaryRole = getPrimaryRole(user.roles);
+    return rbac.hasAnyPermission(primaryRole, permissions);
   };
 
   const hasAllPermissions = (permissions: Permission[]): boolean => {
     if (!user) return false;
-    return rbac.hasAllPermissions(user.role, permissions);
+    const primaryRole = getPrimaryRole(user.roles);
+    return rbac.hasAllPermissions(primaryRole, permissions);
   };
 
   const canAccessPath = (path: string): boolean => {
     if (!user) return false;
-    return rbac.canAccessPath(user.role, path);
+    const primaryRole = getPrimaryRole(user.roles);
+    return rbac.canAccessPath(primaryRole, path);
   };
 
   // 사용자 정보 새로고침
@@ -259,7 +298,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         if (jwsUser) {
           // SMS 수신자 정보 추가 조회 (customer 역할인 경우)
-          if (jwsUser.role === 'customer') {
+          if (jwsUser.roles.includes('customer')) {
             try {
               const smsResult = await customerLinkService.findCustomersBySMSRecipient(jwsUser.mobile);
               if (smsResult) {

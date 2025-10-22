@@ -1,7 +1,8 @@
 # JHW 쇼핑몰 시스템 명세서
 
-**버전**: v0.9.0
+**버전**: v0.9.7
 **작성일**: 2025-10-12
+**최종 업데이트**: 2025-10-19
 **프로젝트명**: JHW Shop System
 **Firebase 프로젝트**: jinhyun-wholesale
 **배포 URL**: https://jinhyun-shop.web.app
@@ -93,7 +94,7 @@ JHW 쇼핑몰은 진현유통의 고객사가 상품을 주문할 수 있는 모
 │         │    - customers               │                  │
 │         │    - products                │                  │
 │         │    - saleOrders              │                  │
-│         │    - dailyOrderCycles        │                  │
+│         │    - cutoff             │                  │
 │         │  • Cloud Functions           │                  │
 │         │  • Hosting                   │                  │
 │         └──────────────────────────────┘                  │
@@ -209,6 +210,122 @@ JHW 쇼핑몰은 진현유통의 고객사가 상품을 주문할 수 있는 모
 - **세션**: Admin 앱과 독립된 Firebase Auth 인스턴스
 - **자동 로그아웃**: 24시간 비활성 시
 
+### 4.4 로그인 규칙
+
+#### 4.4.1 쇼핑몰 로그인 허용 역할
+JHW 쇼핑몰은 **관리자(admin)**, **직원(staff)**, **고객사(customer)** 역할이 로그인할 수 있습니다.
+
+**허용되는 역할 조합**:
+- ✅ `admin` (단일 역할) - 대리 주문용
+- ✅ `staff` (단일 역할) - 대리 주문용
+- ✅ `customer` (단일 역할) - 일반 주문용
+- ✅ `admin` + `customer` (다중 역할) - admin 우선
+- ✅ `staff` + `customer` (다중 역할) - staff 우선
+- ✅ `admin` + `supplier` (다중 역할) - admin 우선
+- ✅ `staff` + `supplier` (다중 역할) - staff 우선
+- ✅ `customer` + `supplier` (다중 역할) - customer 우선
+
+**차단되는 역할 조합**:
+- ❌ `supplier` (단일 역할) → "공급사 담당자는 쇼핑몰 로그인이 제한되어 있습니다. 문의사항은 관리자에게 연락해주세요."
+
+**검증 로직** (`shop/src/contexts/AuthContextProvider.tsx:187-210`):
+```typescript
+// admin, staff, customer 역할 중 하나라도 있는지 확인
+const hasAllowedRole = jwsUser.roles.includes('admin')
+  || jwsUser.roles.includes('staff')
+  || jwsUser.roles.includes('customer');
+
+// supplier만 있는 경우 차단
+const hasOnlySupplierRole = jwsUser.roles.includes('supplier')
+  && !jwsUser.roles.includes('admin')
+  && !jwsUser.roles.includes('staff')
+  && !jwsUser.roles.includes('customer');
+
+if (hasOnlySupplierRole) {
+  await signOut(auth);
+  throw new Error('공급사 담당자는 쇼핑몰 로그인이 제한되어 있습니다.');
+}
+```
+
+#### 4.4.2 대리 주문 모드
+**직원/관리자의 고객사 대리 주문 지원**:
+
+Admin 시스템에서 "대리 쇼핑" 메뉴를 통해 직원이나 관리자가 고객사를 대신해 주문할 수 있습니다.
+
+**대리 주문 프로세스**:
+```
+1. Admin 앱에서 대리 쇼핑 메뉴 선택
+   ↓
+2. 고객사 선택
+   ↓
+3. Shop 앱 새 창 오픈 (window.open)
+   URL: /shop/products?customerId=xxx&proxyMode=true
+   ↓
+4. 고객사 자동 선택 (선택 페이지 건너뛰기)
+   ↓
+5. 상품 선택 → 장바구니 → 주문
+   ↓
+6. saleOrder 생성 시 orderType='staff_proxy' 자동 설정
+   ↓
+7. 주문 완료
+```
+
+**대리 주문 특징**:
+- **독립 세션**: Admin 앱과 Shop 앱의 세션은 완전히 분리됨
+- **URL 파라미터**: `customerId`로 고객사 정보 전달
+- **자동 선택**: 고객사 선택 페이지 건너뛰기
+- **주문 구분**: `createdBy` 필드에 직원/관리자 UID 저장
+- **주문 유형**: `orderType='staff_proxy'` 자동 설정
+
+#### 4.4.3 다중 역할 우선순위
+한 사용자가 여러 역할을 가진 경우, 다음 우선순위에 따라 **주 역할(Primary Role)**을 결정합니다:
+
+**우선순위**: `admin` > `staff` > `customer` > `supplier`
+
+**쇼핑몰 로그인 시 동작**:
+- **admin + customer**: admin 권한으로 로그인, 모든 고객사 대리 주문 가능
+- **staff + customer**: staff 권한으로 로그인, 모든 고객사 대리 주문 가능
+- **customer + supplier**: customer 권한으로 로그인, 연결된 고객사 주문 가능
+
+**주 역할 계산 함수** (`shop/src/contexts/AuthContextProvider.tsx:24-31`):
+```typescript
+const getPrimaryRole = (roles: UserRole[]): UserRole => {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('staff')) return 'staff';
+  if (roles.includes('customer')) return 'customer';
+  if (roles.includes('supplier')) return 'supplier';
+  return 'staff'; // 기본값
+};
+```
+
+#### 4.4.4 로그인 플로우
+```
+1. 사용자 로그인 시도
+   ↓
+2. Firebase Authentication (휴대폰번호 → 이메일 변환)
+   ↓
+3. Firestore 사용자 정보 조회 (authUid 기반)
+   ↓
+4. 계정 상태 확인 (isActive)
+   ↓
+5. 역할 검증
+   - admin ✓ 또는 staff ✓ 또는 customer ✓ → 로그인 성공
+   - supplier만 있음 → 차단
+   ↓
+6. 마지막 로그인 시간 업데이트
+   ↓
+7. 고객사 선택 페이지 이동
+   - URL에 customerId 파라미터 있으면 자동 선택 후 상품 목록으로
+   - 없으면 연결된 고객사 목록 표시
+```
+
+#### 4.4.5 세션 관리
+- **독립 세션**: Admin 앱과 Shop 앱은 독립된 Firebase Auth 세션 유지
+- **LocalStorage 캐싱**: 사용자 정보 24시간 캐싱
+- **고객사 선택 유지**: 선택된 고객사 ID를 로컬 스토리지에 저장
+- **자동 로그아웃**: 24시간 비활성 시 세션 만료
+- **세션 공유 불가**: Shop에서 로그인해도 Admin에서는 별도 로그인 필요
+
 ---
 
 ## 5. 주요 기능
@@ -294,9 +411,12 @@ JHW 쇼핑몰은 진현유통의 고객사가 상품을 주문할 수 있는 모
 5. `orderType` 자동 설정:
    - 고객이 직접 주문: `'customer'`
    - 직원 대리 주문: `'staff_proxy'` (URL 파라미터로 판단)
-6. `orderPhase` 자동 결정:
-   - 일일식품 확정 전: `'regular'` → `status: 'placed'`
-   - 일일식품 확정 후: `'additional'` → `status: 'confirmed'`
+6. `dailyFoodOrderType` 자동 설정 (주문 생성 시점에 확정, 이후 불변):
+   - 일일식품 포함 여부 확인
+   - cutoff 조회: status 확인
+   - status='open': `'regular'` (정규 주문)
+   - status='closed': `'additional'` (추가 주문)
+   - 일일식품 미포함: `'none'`
 7. 장바구니 비우기
 8. 주문 완료 메시지 표시
 9. 주문 내역 페이지로 이동
@@ -567,8 +687,8 @@ JHW 쇼핑몰은 진현유통의 고객사가 상품을 주문할 수 있는 모
    ↓
 8. saleOrder 생성
    - orderType: 'customer'
-   - orderPhase: 자동 결정 (regular/additional)
-   - status: 자동 결정 (placed/confirmed)
+   - dailyFoodOrderType: 자동 설정 (regular/additional/none)
+   - status: 'confirmed' (즉시 확정)
    ↓
 9. 장바구니 비우기
    ↓
@@ -597,49 +717,44 @@ JHW 쇼핑몰은 진현유통의 고객사가 상품을 주문할 수 있는 모
 7. 주문 완료
 ```
 
-### 7.2 주문 단계 자동 결정
+### 7.2 주문 타입 자동 설정
 
-#### 7.2.1 일일식품 확정 전
+#### 7.2.1 일일식품 포함 여부 확인
 ```typescript
-// dailyOrderCycles 조회
-const cycle = await getDoc(doc(db, 'dailyOrderCycles', todayYYMMDD));
-
-if (!cycle.exists() || !cycle.data().isConfirmed) {
-  // 일일식품 확정 전
-  orderPhase = 'regular';
-  status = 'placed';  // 확정 대기
-}
+// 일일식품 상품이 포함되어 있는지 확인
+const containsDailyFood = orderItems.some(item =>
+  item.mainCategory === '일일식품'
+);
 ```
 
-#### 7.2.2 일일식품 확정 후
+#### 7.2.2 dailyFoodOrderType 설정
 ```typescript
-// dailyOrderCycles 조회
-const cycle = await getDoc(doc(db, 'dailyOrderCycles', todayYYMMDD));
+if (containsDailyFood) {
+  // cutoff 조회
+  const status = await cutoffService.getInfo();
 
-if (cycle.exists() && cycle.data().isConfirmed) {
-  // 일일식품 확정 후
-  orderPhase = 'additional';
-  status = 'confirmed';  // 즉시 확정
+  // status에 따라 주문 타입 설정 (주문 생성 시점에 확정, 이후 불변)
+  if (status.status === 'open') {
+    // 접수 기간 중
+    dailyFoodOrderType = 'regular';  // 정규 주문 (전량 공급 보장)
+  } else {
+    // 접수 마감 후
+    dailyFoodOrderType = 'additional';  // 추가 주문 (여유분 재고 처리)
+  }
+} else {
+  // 일일식품 미포함
+  dailyFoodOrderType = 'none';
 }
+
+// 모든 주문은 즉시 confirmed 상태로 생성
+status = 'confirmed';
 ```
+
+**중요**: `dailyFoodOrderType`은 주문 생성 시점에 한 번 설정되며, 이후 변경되지 않습니다. 이는 데이터 무결성을 보장하기 위한 불변 필드입니다.
 
 ### 7.3 주문 상태 변경
 
-#### 7.3.1 Regular 주문 상태 흐름
-```
-placed (접수)
-  ↓ (Admin에서 일일식품 확정)
-confirmed (확정)
-  ↓ (Admin에서 출하 완료)
-completed (완료)
-
-[예외 흐름]
-placed → pended (보류)
-placed → rejected (거부)
-placed/confirmed → cancelled (취소)
-```
-
-#### 7.3.2 Additional 주문 상태 흐름
+#### 7.3.1 주문 상태 흐름
 ```
 confirmed (생성 즉시 확정)
   ↓ (Admin에서 출하 완료)
@@ -647,7 +762,14 @@ completed (완료)
 
 [예외 흐름]
 confirmed → cancelled (취소)
+confirmed → pended (보류) - Admin에서만 가능
+confirmed → rejected (거부) - Admin에서만 가능
 ```
+
+**참고**:
+- 모든 주문은 생성 즉시 `confirmed` 상태
+- `dailyFoodOrderType`에 관계없이 동일한 상태 흐름
+- 정규 주문(regular)과 추가 주문(additional)의 차이는 공급 보장 여부
 
 ### 7.4 주문 취소
 
@@ -848,7 +970,24 @@ Shop 앱은 Admin 앱과 동일한 타입 정의 사용:
 
 ---
 
-**문서 버전**: v0.9.0
-**마지막 업데이트**: 2025-10-14
+**문서 버전**: v0.9.7
+**마지막 업데이트**: 2025-10-19
 **작성자**: Claude Code
 **연락처**: 진현유통 관리자
+
+## 변경 이력
+
+### v0.9.7 (2025-10-19)
+- **일일식품 주문 타입 시스템 개선**:
+  - 주문 타입 필드 변경: `orderPhase` → `dailyFoodOrderType`
+  - 타입 값: `regular` / `additional` / `none` (일일식품 미포함)
+  - **불변성 원칙**: 주문 생성 시점에 타입 확정, 이후 절대 변경 불가
+  - cutoff 컬렉션 사용 (status: 'open'/'closed')
+  - 모든 주문은 생성 즉시 `confirmed` 상태
+- **주요 변경사항**:
+  - saleOrderService: 주문 생성 시 dailyFoodOrderType 설정
+  - dailyOrderCycles → cutoff 컬렉션 참조 변경
+  - 시간 기반 재계산 제거 → 필드 기반 쿼리
+
+### v0.9.0 (2025-10-14)
+- 초기 버전

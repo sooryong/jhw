@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/outbound/DailyOrderOutboundInspectionPage.tsx
- * 작성 날짜: 2025-10-13
- * 주요 내용: 일일주문 출하 검수 페이지
+* 파일 경로: /src/pages/outbound/OutboundInspectionPage.tsx
+* 작성 날짜: 2025-10-18
+* 주요 내용: 출하 검수 페이지
  */
 
 import { useState, useEffect } from 'react';
@@ -30,7 +30,7 @@ import {
   LocalShipping as ShippingIcon,
   Print as PrintIcon
 } from '@mui/icons-material';
-import { completeOutbound, type OutboundInspectionItem } from '../../services/dailyOrderOutboundService';
+import { completeOutbound, type OutboundInspectionItem } from '../../services/outboundService';
 import type { SaleOrder } from '../../types/saleOrder';
 import type { Product } from '../../types/product';
 import type { SaleLedger } from '../../types/saleLedger';
@@ -40,7 +40,7 @@ import { db } from '../../config/firebase';
 import QuickProductAddDialog from '../../components/inbound/QuickProductAddDialog';
 import { openPrintCenter } from '../../utils/printUtils';
 
-const DailyOrderOutboundInspectionPage = () => {
+const OutboundInspectionPage = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -717,4 +717,4 @@ const DailyOrderOutboundInspectionPage = () => {
   );
 };
 
-export default DailyOrderOutboundInspectionPage;
+export default OutboundInspectionPage;

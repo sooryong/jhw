@@ -14,6 +14,9 @@ import type {
 // 사용자 역할 (고객사, 공급사 추가)
 export type UserRole = 'admin' | 'staff' | 'customer' | 'supplier';
 
+// 다중 역할 지원을 위한 타입
+export type UserRoles = UserRole[];
+
 // 고객사 사용자 알림 설정
 export interface CustomerUserNotificationPreferences {
   receiveOrderNotifications: boolean; // 주문 관련 SMS 수신
@@ -50,7 +53,7 @@ export interface JWSUser {
   uid: string;
   name: string;
   mobile: NormalizedMobile; // 휴대폰번호 (정규화)
-  role: UserRole;
+  roles: UserRoles; // 다중 역할 지원 (배열) - 우선순위: admin > staff > customer > supplier
   email?: string; // 이메일 (선택사항)
 
   // customer 역할 전용 필드들
@@ -72,7 +75,7 @@ export interface JWSUserDisplay {
   uid: string;
   name: string;
   mobile: FormattedMobile; // 휴대폰번호 (포맷된)
-  role: UserRole;
+  roles: UserRoles; // 다중 역할 지원 (배열) - 우선순위: admin > staff > customer > supplier
   email?: string; // 이메일 (선택사항)
 
   // customer 역할 전용 필드들
@@ -93,7 +96,7 @@ export interface JWSUserDisplay {
 export interface JWSUserFormData {
   name: string;
   mobile: string; // 입력 시에는 문자열로 받아서 정규화
-  role: UserRole;
+  roles: UserRole[]; // 다중 역할 선택
   email?: string;
   linkedCustomers?: string[]; // 입력 시에는 문자열로 받아서 정규화
   linkedSuppliers?: string[]; // 입력 시에는 문자열로 받아서 정규화
@@ -111,3 +114,14 @@ export interface UserTypeConverters {
 export type User = JWSUser;
 export type UserDisplay = JWSUserDisplay;
 export type UserFormData = JWSUserFormData;
+
+// 역할 헬퍼 함수 타입
+export interface UserRoleHelpers {
+  hasRole: (role: UserRole) => boolean;
+  hasAnyRole: (roles: UserRole[]) => boolean;
+  hasAllRoles: (roles: UserRole[]) => boolean;
+  isAdmin: () => boolean;
+  isStaff: () => boolean;
+  isCustomer: () => boolean;
+  isSupplier: () => boolean;
+}

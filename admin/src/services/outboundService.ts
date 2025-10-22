@@ -1,6 +1,6 @@
 /**
- * 파일 경로: /src/services/dailyOrderOutboundService.ts
- * 작성 날짜: 2025-10-13
+ * 파일 경로: /src/services/outboundService.ts
+ * 작성 날짜: 2025-10-18
  * 주요 내용: 출하 관리 서비스
  */
 
@@ -19,26 +19,23 @@ import type { SaleOrder } from '../types/saleOrder';
 import type { SaleLedger, SaleLedgerItem } from '../types/saleLedger';
 import type { Product } from '../types/product';
 import type { CustomerAccount } from '../types/customerAccount';
+import timeRangeService from './timeRangeService';
 
 /**
  * 출하 대기 중인 매출주문 조회
  * - confirmed와 completed 상태 모두 조회
- * - resetAt부터 현재까지 생성된 매출주문만 표시
+ * - 현재 범위 시작 시간부터 현재까지 생성된 매출주문만 표시
  */
 export const getConfirmedSaleOrders = async (): Promise<SaleOrder[]> => {
   try {
-    // 일일확정 상태 조회
-    const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-    const confirmationStatus = await dailyOrderCycleService.getStatus();
+    // timeRangeService에서 기준 시간 가져오기
+    const rangeStart = await timeRangeService.getCurrentRangeStart();
 
-    // resetAt이 없으면 오늘 00:00 사용
-    const resetAt = confirmationStatus.resetAt || new Date(new Date().setHours(0, 0, 0, 0));
-
-    // resetAt 이후의 confirmed/completed 매출주문 조회
+    // 기준 시간 이후의 confirmed/completed 매출주문 조회
     const q = query(
       collection(db, 'saleOrders'),
       where('status', 'in', ['confirmed', 'completed']),
-      where('placedAt', '>=', Timestamp.fromDate(resetAt)),
+      where('placedAt', '>=', Timestamp.fromDate(rangeStart)),
       orderBy('placedAt', 'desc')
     );
 

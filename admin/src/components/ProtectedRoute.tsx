@@ -13,6 +13,15 @@ import { useAuth } from '../hooks/useAuth';
 import type { UserRole } from '../types/user';
 import type { Permission } from '../utils/rbac';
 
+// 역할 우선순위 계산 (admin > staff > customer > supplier)
+// const getPrimaryRole = (roles: UserRole[]): UserRole => {
+//   if (roles.includes('admin')) return 'admin';
+//   if (roles.includes('staff')) return 'staff';
+//   if (roles.includes('customer')) return 'customer';
+//   if (roles.includes('supplier')) return 'supplier';
+//   return 'staff'; // 기본값
+// };
+
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: UserRole[]; // 접근 허용할 역할들
@@ -56,7 +65,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles,
   }
 
   // 고객사 사용자의 쇼핑몰 접근 시 URL 확인 (단순화된 로직)
-  if (user.role === 'customer' &&
+  if (user.roles.includes('customer') &&
       location.pathname.startsWith('/shop') &&
       location.pathname !== '/shop/select-customer') {
 
@@ -106,7 +115,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles,
     }
   }
   // 역할별 접근 제어 (우선순위 2: 역할 기반)
-  else if (allowedRoles && !allowedRoles.includes(user.role)) {
+  else if (allowedRoles && !user.roles.some(role => allowedRoles.includes(role))) {
     // customer 역할이 관리자 페이지에 접근 시 쇼핑몰로 리다이렉트
     if (isCustomer()) {
       return <Navigate to="/shop" replace />;

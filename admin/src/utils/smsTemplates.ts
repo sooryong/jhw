@@ -5,6 +5,7 @@
  */
 
 import type { PurchaseOrder } from '../types/purchaseOrder';
+import type { SaleOrder } from '../types/saleOrder';
 
 /**
  * 매입주문 SMS 메시지 생성 (간결한 포맷)
@@ -30,5 +31,33 @@ ${itemList}
 합계수량: ${totalQuantity.toLocaleString('ko-KR')}개
 
 확인 후 회신 부탁드립니다.
+02-2676-8600`;
+};
+
+/**
+ * 매출주문 SMS 메시지 생성 (간결한 포맷)
+ */
+export const generateSaleOrderMessage = (saleOrder: SaleOrder): string => {
+  // 상품 목록 생성 (<상품명 (규격): 수량개> 형식)
+  const itemList = saleOrder.orderItems
+    .map(item => {
+      const productName = item.productName;
+      const spec = item.specification ? ` (${item.specification})` : '';
+      const quantity = item.quantity.toLocaleString('ko-KR');
+      return `<${productName}${spec}: ${quantity}개>`;
+    })
+    .join('\n');
+
+  // 총 수량 계산
+  const totalQuantity = saleOrder.orderItems
+    .reduce((sum, item) => sum + item.quantity, 0);
+
+  return `[진현유통 매출주문]
+${saleOrder.customerInfo.businessName}님
+${itemList}
+합계수량: ${totalQuantity.toLocaleString('ko-KR')}개
+주문금액: ${saleOrder.finalAmount.toLocaleString('ko-KR')}원
+
+확인 감사합니다.
 02-2676-8600`;
 };

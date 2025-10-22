@@ -133,7 +133,7 @@ const CustomerAddPage: React.FC = () => {
             customerType: types[0]
           }));
         }
-      } catch (error) {
+      } catch {
       // Error handled silently
         // 오류 처리: 고객사 유형 로드 실패
       } finally {

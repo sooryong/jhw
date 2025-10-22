@@ -140,7 +140,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
         const supplierList = await supplierService.getSuppliers({ isActive: true });
         setSuppliers(supplierList);
 
-      } catch (error) {
+      } catch {
       // Error handled silently
         // 데이터 로드 실패 처리
       } finally {

@@ -76,8 +76,8 @@ const UserLinkModal: React.FC<UserLinkModalProps> = ({
 
   // 실시간 검색 필터링 (이름 또는 휴대폰번호) - 지정된 role만 표시, 최신순 정렬
   const filteredUsers = useMemo(() => {
-    // 먼저 지정된 role만 필터링
-    const roleFilteredUsers = users.filter(user => user.role === filterRole);
+    // 먼저 지정된 role만 필터링 (roles 배열에 포함된 경우)
+    const roleFilteredUsers = users.filter(user => user.roles.includes(filterRole));
 
     let filtered: User[];
 

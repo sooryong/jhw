@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/inbound/DailyOrderInboundInspectionPage.tsx
- * 작성 날짜: 2025-10-06
- * 주요 내용: 일일주문 입고 검수 페이지
+ * 파일 경로: /src/pages/inbound/InboundInspectionPage.tsx
+ * 작성 날짜: 2025-10-18
+ * 주요 내용: 입고 검수 페이지
  */
 
 import { useState, useEffect } from 'react';
@@ -30,7 +30,7 @@ import {
   PlaylistAdd as PlaylistAddIcon
 } from '@mui/icons-material';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
-import { completeInbound, type InboundInspectionItem } from '../../services/dailyOrderInboundService';
+import { completeInbound, type InboundInspectionItem } from '../../services/inboundService';
 import type { PurchaseOrder } from '../../types/purchaseOrder';
 import type { Product } from '../../types/product';
 import type { PurchaseLedger } from '../../types/purchaseLedger';
@@ -39,7 +39,7 @@ import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firesto
 import { db } from '../../config/firebase';
 import QuickProductAddDialog from '../../components/inbound/QuickProductAddDialog';
 
-const DailyOrderInboundInspectionPage = () => {
+const InboundInspectionPage = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -746,4 +746,4 @@ const DailyOrderInboundInspectionPage = () => {
   );
 };
 
-export default DailyOrderInboundInspectionPage;
+export default InboundInspectionPage;

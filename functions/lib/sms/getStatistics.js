@@ -23,7 +23,7 @@ exports.getStatistics = (0, https_1.onCall)({
     timeoutSeconds: 30,
     maxInstances: 5
 }, async (request) => {
-    var _a, _b;
+    var _a, _b, _c;
     const { auth } = request;
     if (!auth) {
         throw new https_1.HttpsError('unauthenticated', 'User must be authenticated');
@@ -33,7 +33,7 @@ exports.getStatistics = (0, https_1.onCall)({
         .where('authUid', '==', auth.uid)
         .limit(1)
         .get();
-    if (userQuery.empty || ((_a = userQuery.docs[0].data()) === null || _a === void 0 ? void 0 : _a.role) !== 'admin') {
+    if (userQuery.empty || !((_b = (_a = userQuery.docs[0].data()) === null || _a === void 0 ? void 0 : _a.roles) === null || _b === void 0 ? void 0 : _b.includes('admin'))) {
         throw new https_1.HttpsError('permission-denied', 'Admin role required');
     }
     try {
@@ -55,7 +55,7 @@ exports.getStatistics = (0, https_1.onCall)({
             success: true,
             statistics,
             recentMessages: {
-                count: ((_b = messages.messageList) === null || _b === void 0 ? void 0 : _b.length) || 0,
+                count: ((_c = messages.messageList) === null || _c === void 0 ? void 0 : _c.length) || 0,
                 messages: messages.messageList || []
             },
             timestamp: new Date().toISOString(),

@@ -27,9 +27,12 @@ import type {
   OrderHistoryFilter,
   OrderHistoryResult,
   SaleOrderStatus,
-} from '../types/saleOrder'; // Updated: 2025-10-07
+  OrderItem,
+} from '../types/saleOrder'; // Updated: 2025-10-18
+import type { OrderCutoffStatus } from '../types/cutoff';
 import orderValidationService from './orderValidationService';
-import dailyOrderCycleService from './dailyOrderCycleService';
+import cutoffService from './cutoffService';
+import { getDoc, doc as firestoreDoc } from 'firebase/firestore';
 
 const COLLECTION_NAME = 'saleOrders';
 
@@ -72,6 +75,31 @@ const generateSaleOrderNumber = async (): Promise<string> => {
   return `SO-${currentDate}-${paddedNumber}`;
 };
 
+/**
+ * 주문 아이템에 일일식품 상품이 포함되어 있는지 확인
+ * @param items - 주문 아이템 배열
+ * @returns true if any item is daily food product
+ */
+const hasDailyFoodItems = async (items: OrderItem[]): Promise<boolean> => {
+  try {
+    for (const item of items) {
+      const productRef = firestoreDoc(db, 'products', item.productId);
+      const productSnap = await getDoc(productRef);
+
+      if (productSnap.exists()) {
+        const productData = productSnap.data();
+        if (productData.mainCategory === '일일식품') {
+          return true;
+        }
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error('Error checking daily food items:', error);
+    return false;
+  }
+};
+
 // 매출주문 생성 (자동 검증 및 확정 상태 판단)
 export const createSaleOrder = async (orderData: CreateSaleOrderData): Promise<string> => {
   try {
@@ -81,8 +109,8 @@ export const createSaleOrder = async (orderData: CreateSaleOrderData): Promise<s
     // 주문 검증 실행
     const validationResult = await orderValidationService.validateOrder(orderData.orderItems);
 
-    // 일일 주문 사이클 상태 확인 (orderType 전달)
-    const orderCreationData = await dailyOrderCycleService.getOrderCreationData(orderData.orderType);
+    // 일일식품 상품 포함 여부 확인
+    const containsDailyFood = await hasDailyFoodItems(orderData.orderItems);
 
     // 기본 주문 데이터
     const baseOrderData = {
@@ -101,14 +129,20 @@ export const createSaleOrder = async (orderData: CreateSaleOrderData): Promise<s
     let newSaleOrder: Omit<SaleOrder, 'id'>;
 
     if (validationResult.isValid) {
-      // 검증 통과: 즉시 confirmed 상태로 생성 (유효성 검사 완료 = 확정)
+      // 검증 통과: 즉시 confirmed 상태로 생성
       newSaleOrder = {
         ...baseOrderData,
-        status: 'confirmed',                                       // 항상 confirmed (유효성 검사 통과 시)
-        orderType: orderCreationData.orderType,                    // 'customer' 또는 'staff_proxy'
-        orderPhase: orderCreationData.orderPhase,                  // 'regular' 또는 'additional'
-        confirmedAt: now,                                          // 항상 confirmedAt 설정
+        status: 'confirmed',
+        confirmedAt: now,
       };
+
+      // 일일식품 상품이 포함된 경우 cutoffStatus 설정
+      if (containsDailyFood) {
+        const cutoffInfo = await cutoffService.getInfo();
+        newSaleOrder.cutoffStatus = cutoffInfo.status === 'open'
+          ? 'within-cutoff'
+          : 'after-cutoff';
+      }
     } else {
       // 검증 실패 → pended 상태로 저장
       const pendedReason = orderValidationService.generatePendedReason(
@@ -119,12 +153,18 @@ export const createSaleOrder = async (orderData: CreateSaleOrderData): Promise<s
       newSaleOrder = {
         ...baseOrderData,
         status: 'pended',
-        orderType: orderData.orderType,         // 전달받은 orderType 사용
-        orderPhase: 'regular',                  // 기본값: 정규 주문
         pendedReason,
         pendedAt: now,
         validationErrors: [...validationResult.errors, ...validationResult.warnings],
       };
+
+      // pended 상태여도 일일식품 포함 시 cutoffStatus 설정
+      if (containsDailyFood) {
+        const cutoffInfo = await cutoffService.getInfo();
+        newSaleOrder.cutoffStatus = cutoffInfo.status === 'open'
+          ? 'within-cutoff'
+          : 'after-cutoff';
+      }
     }
 
     await addDoc(collection(db, COLLECTION_NAME), newSaleOrder);
@@ -287,6 +327,14 @@ export const deleteSaleOrder = async (saleOrderNumber: string): Promise<void> =>
       throw new Error('보류 상태의 주문만 삭제할 수 있습니다.');
     }
 
+    // 일일식품 마감 검증: within-cutoff 주문은 마감 후 삭제 불가
+    if (saleOrder.cutoffStatus === 'within-cutoff') {
+      const cutoffInfo = await cutoffService.getInfo();
+      if (cutoffInfo.status === 'closed') {
+        throw new Error('마감 시간 내 접수된 일일식품 주문은 마감 후 삭제할 수 없습니다.');
+      }
+    }
+
     // 문서 ID로 삭제
     const q = query(
       collection(db, COLLECTION_NAME),
@@ -407,9 +455,9 @@ export const getSaleOrderStats = async (customerId?: string) => {
 // 고객사별 주문 수량 조회 (resetAt ~ 현재까지, placed/confirmed/pending 상태만)
 export const getOrderCountByCustomer = async (customerId: string): Promise<number> => {
   try {
-    // resetAt 시간 조회
-    const cycleStatus = await dailyOrderCycleService.getStatus();
-    const resetAt = cycleStatus.resetAt;
+    // cutoff 정보 조회
+    const cutoffInfo = await cutoffService.getInfo();
+    const resetAt = cutoffInfo.openedAt;
 
     if (!resetAt) {
       // resetAt이 없으면 오늘 00:00 기준
@@ -477,9 +525,9 @@ export interface OrderStatsByCustomer {
 
 export const getOrderStatsByCustomer = async (customerId: string): Promise<OrderStatsByCustomer> => {
   try {
-    // resetAt 시간 조회
-    const cycleStatus = await dailyOrderCycleService.getStatus();
-    const resetAt = cycleStatus.resetAt;
+    // cutoff 정보 조회
+    const cutoffInfo = await cutoffService.getInfo();
+    const resetAt = cutoffInfo.openedAt;
 
     let resetAtTimestamp: Timestamp;
     if (!resetAt) {
@@ -597,4 +645,110 @@ export const cancelSaleOrder = async (saleOrderNumber: string, customerId: strin
     console.error('매출주문 취소 실패:', error);
     throw error;
   }
+};
+
+/**
+ * 마감 상태별 주문 조회
+ * @param cutoffStatus - 'within-cutoff' | 'after-cutoff'
+ * @returns 주문 목록
+ */
+export const getOrdersByCutoffStatus = async (
+  cutoffStatus: OrderCutoffStatus
+): Promise<SaleOrder[]> => {
+  try {
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where('cutoffStatus', '==', cutoffStatus),
+      where('status', '==', 'confirmed'),
+      orderBy('placedAt', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      ...doc.data(),
+      id: doc.id,
+    })) as unknown as SaleOrder[];
+  } catch (error) {
+    console.error(`마감 상태별 주문 조회 실패 (${cutoffStatus}):`, error);
+    throw new Error('마감 상태별 주문 조회에 실패했습니다.');
+  }
+};
+
+/**
+ * 매출주문 확정 (placed → confirmed)
+ * @param saleOrderNumber - 매출주문번호
+ */
+export const confirmSaleOrder = async (saleOrderNumber: string): Promise<void> => {
+  try {
+    const saleOrder = await getSaleOrder(saleOrderNumber);
+
+    if (!saleOrder) {
+      throw new Error('존재하지 않는 매출주문입니다.');
+    }
+
+    if (saleOrder.status !== 'placed') {
+      throw new Error('접수(placed) 상태의 주문만 확정할 수 있습니다.');
+    }
+
+    // confirmed로 상태 변경
+    await updateSaleOrderStatus(saleOrderNumber, 'confirmed');
+  } catch (error) {
+    console.error('매출주문 확정 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * 일괄 확정 결과 타입
+ */
+export interface BatchConfirmResult {
+  totalCount: number;
+  successCount: number;
+  failureCount: number;
+  results: Array<{
+    saleOrderNumber: string;
+    success: boolean;
+    error?: string;
+  }>;
+}
+
+/**
+ * 매출주문 일괄 확정 (Service 레이어: batch 사용)
+ * @param saleOrderNumbers - 매출주문번호 배열
+ * @returns 일괄 확정 결과
+ */
+export const batchConfirmSaleOrders = async (
+  saleOrderNumbers: string[]
+): Promise<BatchConfirmResult> => {
+  const results: Array<{
+    saleOrderNumber: string;
+    success: boolean;
+    error?: string;
+  }> = [];
+
+  for (const saleOrderNumber of saleOrderNumbers) {
+    try {
+      await confirmSaleOrder(saleOrderNumber);
+      results.push({
+        saleOrderNumber,
+        success: true
+      });
+    } catch (error) {
+      const err = error as Error;
+      results.push({
+        saleOrderNumber,
+        success: false,
+        error: err.message
+      });
+    }
+  }
+
+  const successCount = results.filter(r => r.success).length;
+
+  return {
+    totalCount: saleOrderNumbers.length,
+    successCount,
+    failureCount: saleOrderNumbers.length - successCount,
+    results
+  };
 };

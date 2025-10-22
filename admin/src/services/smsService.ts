@@ -153,7 +153,7 @@ const splitMessageIntoPages = (inputText: string): string[] => {
 
     return resultPages.length > 0 ? resultPages : [safeText];
 
-  } catch (error) {
+  } catch {
       // Error handled silently
     return [safeText];
   }
@@ -209,7 +209,7 @@ export const getMessageInfo = (inputText: string) => {
 
     return result;
 
-  } catch (error) {
+  } catch {
       // Error handled silently
     return fallbackResult;
   }
@@ -338,7 +338,7 @@ export const sendMessage = async (
               totalFailed++;
             }
 
-          } catch (error) {
+          } catch {
       // Error handled silently
             totalFailed++;
           }
@@ -439,7 +439,7 @@ const saveSmsHistory = async (historyData: SMSHistoryData) => {
       ...historyData,
       createdAt: serverTimestamp()
     });
-  } catch (error) {
+  } catch {
       // Error handled silently
     // 이력 저장 실패는 메인 기능에 영향을 주지 않으므로 무시
   }
@@ -502,7 +502,7 @@ export const getSmsHistory = async (filters: Record<string, unknown> = {}, limit
     }
 
     return results;
-  } catch (error) {
+  } catch {
       // Error handled silently
     // 오류 시 테스트 데이터 반환
     return generateTestSmsHistory();
@@ -720,7 +720,7 @@ export const getSmsStats = async () => {
         failed: (history as unknown[]).filter((h:unknown) => h.status === 'failed').length
       }
     };
-  } catch (error) {
+  } catch {
       // Error handled silently
     return {
       today: { total: 0, success: 0, failed: 0 },
@@ -742,7 +742,7 @@ export const checkServiceStatus = async (): Promise<boolean> => {
 
     // 임시로 true 반환 (기본 Functions가 배포되어 있으므로)
     return true;
-  } catch (error) {
+  } catch {
       // Error handled silently
     return false;
   }

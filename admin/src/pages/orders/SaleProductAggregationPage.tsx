@@ -1,37 +1,32 @@
 /**
- * 파일 경로: /src/pages/orders/ProductAggregationPage.tsx
+ * 파일 경로: /src/pages/orders/SaleProductAggregationPage.tsx
  * 작성 날짜: 2025-10-11
  * 주요 내용: 카테고리별 상품 집계 페이지 (재고 포함)
  */
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Box,
-  Container,
   Typography,
   Button,
   CircularProgress,
-  IconButton,
   Tabs,
   Tab,
   Card,
-  CardContent
+  CardContent,
+  Container
 } from '@mui/material';
 import {
-  ArrowBack as ArrowBackIcon,
-  Inventory as InventoryIcon,
-  Receipt as ReceiptIcon
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { DataGrid, type GridColDef, type GridRowsProp } from '@mui/x-data-grid';
-import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
-import { db } from '../../config/firebase';
-import dailySaleOrderAggregationService from '../../services/dailySaleOrderAggregationService';
-import dailySaleOrderFlowService from '../../services/dailySaleOrderFlowService';
+import saleOrderAggregationService from '../../services/saleOrderAggregationService';
+import settingsService from '../../services/settingsService';
+import { useSaleOrderContext } from '../../contexts/SaleOrderContext';
 import ProductAggregationDetailDialog from '../../components/orders/ProductAggregationDetailDialog';
 
-const ProductAggregationPage = () => {
-  const navigate = useNavigate();
+const SaleProductAggregationPage = () => {
+  const { orders } = useSaleOrderContext();
   const [loading, setLoading] = useState(false);
   const [productAggregation, setProductAggregation] = useState<GridRowsProp>([]);
   const [allProducts, setAllProducts] = useState<GridRowsProp>([]);
@@ -39,6 +34,7 @@ const ProductAggregationPage = () => {
   const [selectedTab, setSelectedTab] = useState(0); // 0: 전체, 1~: 각 카테고리
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const [stats, setStats] = useState({ productTypes: 0, productCount: 0, totalAmount: 0 });
+  const [categoryAmounts, setCategoryAmounts] = useState<Record<string, number>>({});
 
   // 다이얼로그 상태
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -47,41 +43,31 @@ const ProductAggregationPage = () => {
   // 전체 집계 데이터 (상세 정보용)
   const [aggregationData, setAggregationData] = useState<unknown>(null);
 
+  // orders가 변경될 때마다 데이터 처리
   useEffect(() => {
     loadData();
-
-    // Firestore 실시간 리스너 설정
-    let unsubscribe: (() => void) | null = null;
-
-    const setupListener = async () => {
-      const status = await dailySaleOrderFlowService.getStatus();
-      const resetAt = status.resetAt || new Date(new Date().setHours(0, 0, 0, 0));
-
-      const saleOrdersQuery = query(
-        collection(db, 'saleOrders'),
-        where('placedAt', '>=', Timestamp.fromDate(resetAt))
-      );
-
-      unsubscribe = onSnapshot(saleOrdersQuery, (snapshot) => {
-        if (snapshot.docChanges().length > 0) {
-          loadData();
-        }
-      });
-    };
-
-    setupListener();
-
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await dailySaleOrderAggregationService.getActiveOrderAggregationData();
+      // Settings에서 모든 대분류 가져오기
+      const allMainCategories = await settingsService.getProductCategories();
+
+      // confirmed 상태만 상품 집계에 포함
+      const confirmedOrders = orders.filter(order => order.status === 'confirmed');
+
+      // SaleOrderContext에서 받은 orders를 사용하여 집계 수행
+      const categories = await saleOrderAggregationService.aggregateByCategory(confirmedOrders);
+
+      const data = {
+        categories,
+        orders,
+        total: { regular: { count: 0, amount: 0 }, additional: { count: 0, amount: 0 }, pended: { count: 0, amount: 0 }, rejected: { count: 0, amount: 0 } },
+        date: new Date()
+      };
+
       setAggregationData(data); // 전체 데이터 저장
 
       // 카테고리별 상품 집계 생성
@@ -94,17 +80,17 @@ const ProductAggregationPage = () => {
 
         data.categories[category].suppliers.forEach(supplier => {
           supplier.products.forEach(product => {
-            const totalQuantity = product.placedQuantity + product.confirmedQuantity;
-            const totalAmount = product.placedAmount + product.confirmedAmount;
+            const totalQuantity = product.totalQuantity;
+            const totalAmount = product.totalAmount;
 
             if (totalQuantity > 0) {
               productId++;
-              const currentStock = (product as unknown).currentStock || 0;
+              const currentStock = product.stockQuantity || 0;
               productList.push({
                 id: productId,
                 category: category,
                 productName: product.productName,
-                productId: (product as unknown).productCode,
+                productId: product.productId,
                 specification: product.specification || '-',
                 totalQuantity: totalQuantity,
                 currentStock: currentStock,
@@ -119,7 +105,8 @@ const ProductAggregationPage = () => {
       setAllProducts(productList);
       setProductAggregation(productList);
 
-      const sortedCategories = Array.from(categorySet).sort();
+      // Settings에서 가져온 모든 대분류를 사용 (상품이 없어도 표시)
+      const sortedCategories = allMainCategories.sort();
       setCategories(sortedCategories);
 
       // 탭 카운트 계산
@@ -130,6 +117,14 @@ const ProductAggregationPage = () => {
         counts[category] = productList.filter(p => p.category === category).length;
       });
       setTabCounts(counts);
+
+      // 카테고리별 금액 계산
+      const amounts: Record<string, number> = {};
+      sortedCategories.forEach(category => {
+        const categoryProducts = productList.filter(p => p.category === category);
+        amounts[category] = categoryProducts.reduce((sum, p) => sum + p.totalAmount, 0);
+      });
+      setCategoryAmounts(amounts);
 
       // 초기 통계 계산 (전체)
       const totalQuantity = productList.reduce((sum, p) => sum + p.totalQuantity, 0);
@@ -209,21 +204,21 @@ const ProductAggregationPage = () => {
           firstSupplierName = supplier.supplierName;
           productInfo = {
             productName: product.productName,
-            productCode: product.productCode,
+            productCode: product.productId,
             category: category,
             specification: product.specification || '-',
             supplierName: firstSupplierName,
-            totalQuantity: product.placedQuantity + product.confirmedQuantity,
-            currentStock: product.currentStock || 0,
-            totalAmount: product.placedAmount + product.confirmedAmount
+            totalQuantity: product.totalQuantity,
+            currentStock: product.stockQuantity || 0,
+            totalAmount: product.totalAmount
           };
         }
 
         // 공급사 정보 추가
         suppliers.push({
           supplierName: supplier.supplierName,
-          quantity: product.placedQuantity + product.confirmedQuantity,
-          amount: product.placedAmount + product.confirmedAmount
+          quantity: product.totalQuantity,
+          amount: product.totalAmount
         });
       }
     });
@@ -258,7 +253,7 @@ const ProductAggregationPage = () => {
   const productAggregationColumns: GridColDef[] = [
     {
       field: 'category',
-      headerName: '카테고리',
+      headerName: '대분류',
       flex: 0.13,
       minWidth: 80,
       align: 'center',
@@ -266,7 +261,7 @@ const ProductAggregationPage = () => {
     },
     {
       field: 'productName',
-      headerName: '상품명',
+      headerName: `상품명 (${stats.productTypes})`,
       flex: 0.25,
       minWidth: 180
     },
@@ -278,7 +273,7 @@ const ProductAggregationPage = () => {
     },
     {
       field: 'totalQuantity',
-      headerName: '수량',
+      headerName: `수량 (${stats.productCount.toLocaleString()})`,
       flex: 0.13,
       minWidth: 100,
       type: 'number',
@@ -325,99 +320,133 @@ const ProductAggregationPage = () => {
   return (
     <Box sx={{ width: '100%' }}>
       <Container maxWidth={false} sx={{ px: 2 }}>
-        <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#f8f9fa' }}>
+        <Box
+          sx={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            bgcolor: '#f8f9fa'
+          }}
+        >
           {/* 헤더 */}
-          <Box sx={{ p: 2, pb: 1 }}>
+          <Box sx={{ p: 3, pb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <IconButton onClick={() => navigate('/orders/management')}>
-                  <ArrowBackIcon />
-                </IconButton>
-                <InventoryIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-                <Typography variant="h4" sx={{ fontWeight: 600 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    '&:hover': { color: 'primary.main' }
+                  }}
+                  onClick={loadData}
+                >
                   매출주문 상품 집계
                 </Typography>
               </Box>
+
               <Button
                 variant="outlined"
                 size="small"
+                startIcon={loading ? <CircularProgress size={16} /> : <RefreshIcon />}
                 onClick={loadData}
                 disabled={loading}
               >
                 새로고침
               </Button>
             </Box>
-          </Box>
 
-          {/* 통계 패널 */}
-          <Box sx={{ px: 2, pb: 1 }}>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              {/* 좌측 카드 - 통계 (75%) */}
-              <Box sx={{ width: '75%' }}>
-                <Card>
-                  <CardContent sx={{ py: 2 }}>
-                    <Box sx={{ display: 'flex', gap: 3 }}>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          상품 종류
-                        </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                          {stats.productTypes.toLocaleString()}종
-                        </Typography>
-                      </Box>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          상품 수량
-                        </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                          {stats.productCount.toLocaleString()}개
-                        </Typography>
-                      </Box>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          합계 금액
-                        </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                          {stats.totalAmount.toLocaleString()}원
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Box>
-
-              {/* 우측 카드 - 네비게이션 버튼 (25%) */}
-              <Box sx={{ width: '25%' }}>
-                <Card sx={{ height: '100%' }}>
-                  <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', py: 2 }}>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      fullWidth
-                      startIcon={<ReceiptIcon />}
-                      onClick={() => navigate('/orders/customer-orders')}
-                    >
-                      매출주문 확인
-                    </Button>
-                  </CardContent>
-                </Card>
-              </Box>
+            {/* 탭 */}
+            <Box sx={{ mt: 2, borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs value={selectedTab} onChange={handleTabChange}>
+                <Tab label={`전체(${tabCounts.all || 0})`} />
+                {categories.map(category => (
+                  <Tab key={category} label={`${category}(${tabCounts[category] || 0})`} />
+                ))}
+              </Tabs>
             </Box>
           </Box>
 
-          {/* 탭 */}
-          <Box sx={{ px: 2, pb: 1 }}>
-            <Tabs value={selectedTab} onChange={handleTabChange}>
-              <Tab label={`전체(${tabCounts.all || 0})`} />
-              {categories.map(category => (
-                <Tab key={category} label={`${category}(${tabCounts[category] || 0})`} />
+          {/* 통계 패널 */}
+          <Box sx={{ px: 3, pb: 2 }}>
+            <Box sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', md: 'row' },
+              gap: 2
+            }}>
+              {/* 카드 1: 합계 금액 */}
+              <Box sx={{ flex: 1 }}>
+                <Card>
+                  <CardContent sx={{
+                    py: 2,
+                    px: 3,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    minHeight: 60
+                  }}>
+                    <Typography variant="body2" color="text.secondary">
+                      합계 금액
+                    </Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                      {stats.totalAmount.toLocaleString()}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Box>
+
+              {/* 카드 2~4: 카테고리별 금액 (최대 3개) */}
+              {categories.slice(0, 3).map((category) => (
+                <Box key={category} sx={{ flex: 1 }}>
+                  <Card>
+                    <CardContent sx={{
+                      py: 2,
+                      px: 3,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      minHeight: 60
+                    }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {category}
+                      </Typography>
+                      <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                        {categoryAmounts[category]?.toLocaleString() || '0'}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Box>
               ))}
-            </Tabs>
+
+              {/* 카테고리가 3개 미만인 경우 빈 카드로 채우기 */}
+              {Array.from({ length: Math.max(0, 3 - categories.length) }).map((_, index) => (
+                <Box key={`empty-${index}`} sx={{ flex: 1 }}>
+                  <Card>
+                    <CardContent sx={{
+                      py: 2,
+                      px: 3,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      minHeight: 60
+                    }}>
+                      <Typography variant="body2" color="text.secondary">
+                        -
+                      </Typography>
+                      <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.disabled' }}>
+                        -
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Box>
+              ))}
+            </Box>
           </Box>
 
           {/* DataGrid */}
-          <Box sx={{ px: 2, pb: 2, flexGrow: 1 }}>
-            <Box sx={{ height: 'calc(100vh - 340px)', width: '100%' }}>
+          <Box sx={{ px: 3, pb: 2, flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ flexGrow: 1, width: '100%' }}>
               <DataGrid
                 rows={productAggregation}
                 columns={productAggregationColumns}
@@ -477,4 +506,4 @@ const ProductAggregationPage = () => {
   );
 };
 
-export default ProductAggregationPage;
+export default SaleProductAggregationPage;

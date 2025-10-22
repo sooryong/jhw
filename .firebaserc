@@ -6,10 +6,10 @@
     "jinhyun-wholesale": {
       "hosting": {
         "admin": [
-          "jinhyun-admin"
+          "jhwadmin"
         ],
         "shop": [
-          "jinhyun-shop"
+          "jhwshop"
         ]
       }
     }

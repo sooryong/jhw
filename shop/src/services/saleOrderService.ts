@@ -3,6 +3,7 @@
  * 작성 날짜: 2025-09-28
  * 주요 내용: 매출주문 관련 서비스
  * 관련 데이터: saleOrders 컬렉션
+ * Updated: 2025-10-19 - cutoffService import 수정
  */
 
 import {
@@ -27,9 +28,14 @@ import type {
   OrderHistoryFilter,
   OrderHistoryResult,
   SaleOrderStatus,
-} from '../types/saleOrder'; // Updated: 2025-10-07
+  OrderItem,
+  DailyFoodOrderType,
+} from '../types/saleOrder';
 import orderValidationService from './orderValidationService';
-import dailyOrderCycleService from './dailyOrderCycleService';
+import cutoffService from './cutoffService';
+import { getDoc, doc as firestoreDoc } from 'firebase/firestore';
+// @deprecated - Legacy service for backward compatibility
+
 
 const COLLECTION_NAME = 'saleOrders';
 
@@ -72,6 +78,31 @@ const generateSaleOrderNumber = async (): Promise<string> => {
   return `SO-${currentDate}-${paddedNumber}`;
 };
 
+/**
+ * 주문 아이템에 일일식품 상품이 포함되어 있는지 확인
+ * @param items - 주문 아이템 배열
+ * @returns true if any item is daily food product
+ */
+const hasDailyFoodItems = async (items: OrderItem[]): Promise<boolean> => {
+  try {
+    for (const item of items) {
+      const productRef = firestoreDoc(db, 'products', item.productId);
+      const productSnap = await getDoc(productRef);
+
+      if (productSnap.exists()) {
+        const productData = productSnap.data();
+        if (productData.mainCategory === '일일식품') {
+          return true;
+        }
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error('Error checking daily food items:', error);
+    return false;
+  }
+};
+
 // 매출주문 생성 (자동 검증 및 확정 상태 판단)
 export const createSaleOrder = async (orderData: CreateSaleOrderData): Promise<string> => {
   try {
@@ -81,8 +112,8 @@ export const createSaleOrder = async (orderData: CreateSaleOrderData): Promise<s
     // 주문 검증 실행
     const validationResult = await orderValidationService.validateOrder(orderData.orderItems);
 
-    // 일일 주문 사이클 상태 확인 (orderType 전달)
-    const orderCreationData = await dailyOrderCycleService.getOrderCreationData(orderData.orderType);
+    // 일일식품 상품 포함 여부 확인
+    const containsDailyFood = await hasDailyFoodItems(orderData.orderItems);
 
     // 기본 주문 데이터
     const baseOrderData = {
@@ -101,14 +132,22 @@ export const createSaleOrder = async (orderData: CreateSaleOrderData): Promise<s
     let newSaleOrder: Omit<SaleOrder, 'id'>;
 
     if (validationResult.isValid) {
-      // 검증 통과: 즉시 confirmed 상태로 생성 (유효성 검사 완료 = 확정)
+      // 검증 통과: 즉시 confirmed 상태로 생성
       newSaleOrder = {
         ...baseOrderData,
-        status: 'confirmed',                                       // 항상 confirmed (유효성 검사 통과 시)
-        orderType: orderCreationData.orderType,                    // 'customer' 또는 'staff_proxy'
-        orderPhase: orderCreationData.orderPhase,                  // 'regular' 또는 'additional'
-        confirmedAt: now,                                          // 항상 confirmedAt 설정
+        status: 'confirmed',
+        confirmedAt: now,
       };
+
+      // 일일식품 주문 타입 설정 (주문 생성 시점에 확정)
+      if (containsDailyFood) {
+        const cutoffInfo = await cutoffService.getInfo();
+        newSaleOrder.dailyFoodOrderType = cutoffInfo.status === 'open'
+          ? 'regular'
+          : 'additional';
+      } else {
+        newSaleOrder.dailyFoodOrderType = 'none';
+      }
     } else {
       // 검증 실패 → pended 상태로 저장
       const pendedReason = orderValidationService.generatePendedReason(
@@ -119,12 +158,20 @@ export const createSaleOrder = async (orderData: CreateSaleOrderData): Promise<s
       newSaleOrder = {
         ...baseOrderData,
         status: 'pended',
-        orderType: orderData.orderType,         // 전달받은 orderType 사용
-        orderPhase: 'regular',                  // 기본값: 정규 주문
         pendedReason,
         pendedAt: now,
         validationErrors: [...validationResult.errors, ...validationResult.warnings],
       };
+
+      // pended 상태여도 일일식품 주문 타입 설정
+      if (containsDailyFood) {
+        const cutoffInfo = await cutoffService.getInfo();
+        newSaleOrder.dailyFoodOrderType = cutoffInfo.status === 'open'
+          ? 'regular'
+          : 'additional';
+      } else {
+        newSaleOrder.dailyFoodOrderType = 'none';
+      }
     }
 
     await addDoc(collection(db, COLLECTION_NAME), newSaleOrder);
@@ -287,6 +334,14 @@ export const deleteSaleOrder = async (saleOrderNumber: string): Promise<void> =>
       throw new Error('보류 상태의 주문만 삭제할 수 있습니다.');
     }
 
+    // 일일식품 마감 검증: regular 주문은 마감 후 삭제 불가
+    if (saleOrder.dailyFoodOrderType === 'regular') {
+      const cutoffInfo = await cutoffService.getInfo();
+      if (cutoffInfo.status === 'closed') {
+        throw new Error('마감 시간 내 접수된 일일식품 주문은 마감 후 삭제할 수 없습니다.');
+      }
+    }
+
     // 문서 ID로 삭제
     const q = query(
       collection(db, COLLECTION_NAME),
@@ -404,38 +459,38 @@ export const getSaleOrderStats = async (customerId?: string) => {
   }
 };
 
-// 고객사별 주문 수량 조회 (resetAt ~ 현재까지, placed/confirmed/pending 상태만)
+// 고객사별 주문 수량 조회 (openedAt ~ 현재까지, placed/confirmed/pending 상태만)
 export const getOrderCountByCustomer = async (customerId: string): Promise<number> => {
   try {
-    // resetAt 시간 조회
-    const cycleStatus = await dailyOrderCycleService.getStatus();
-    const resetAt = cycleStatus.resetAt;
+    // openedAt 시간 조회
+    const cutoffInfo = await cutoffService.getInfo();
+    const openedAt = cutoffInfo.openedAt;
 
-    if (!resetAt) {
-      // resetAt이 없으면 오늘 00:00 기준
+    if (!openedAt) {
+      // openedAt이 없으면 오늘 00:00 기준
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const resetAtTimestamp = Timestamp.fromDate(today);
+      const openedAtTimestamp = Timestamp.fromDate(today);
 
       const q = query(
         collection(db, COLLECTION_NAME),
         where('customerId', '==', customerId),
         where('status', 'in', ['placed', 'confirmed', 'pended']),
-        where('placedAt', '>=', resetAtTimestamp)
+        where('placedAt', '>=', openedAtTimestamp)
       );
 
       const snapshot = await getDocs(q);
       return snapshot.size;
     }
 
-    // resetAt 이후 주문만 카운트
-    const resetAtTimestamp = Timestamp.fromDate(resetAt);
+    // openedAt 이후 주문만 카운트
+    const openedAtTimestamp = Timestamp.fromDate(openedAt);
 
     const q = query(
       collection(db, COLLECTION_NAME),
       where('customerId', '==', customerId),
       where('status', 'in', ['placed', 'confirmed', 'pended']),
-      where('placedAt', '>=', resetAtTimestamp)
+      where('placedAt', '>=', openedAtTimestamp)
     );
 
     const snapshot = await getDocs(q);
@@ -477,26 +532,26 @@ export interface OrderStatsByCustomer {
 
 export const getOrderStatsByCustomer = async (customerId: string): Promise<OrderStatsByCustomer> => {
   try {
-    // resetAt 시간 조회
-    const cycleStatus = await dailyOrderCycleService.getStatus();
-    const resetAt = cycleStatus.resetAt;
+    // openedAt 시간 조회
+    const cutoffInfo = await cutoffService.getInfo();
+    const openedAt = cutoffInfo.openedAt;
 
-    let resetAtTimestamp: Timestamp;
-    if (!resetAt) {
-      // resetAt이 없으면 오늘 00:00 기준
+    let openedAtTimestamp: Timestamp;
+    if (!openedAt) {
+      // openedAt이 없으면 오늘 00:00 기준
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      resetAtTimestamp = Timestamp.fromDate(today);
+      openedAtTimestamp = Timestamp.fromDate(today);
     } else {
-      resetAtTimestamp = Timestamp.fromDate(resetAt);
+      openedAtTimestamp = Timestamp.fromDate(openedAt);
     }
 
-    // resetAt 이후 주문만 조회
+    // openedAt 이후 주문만 조회
     const q = query(
       collection(db, COLLECTION_NAME),
       where('customerId', '==', customerId),
       where('status', 'in', ['placed', 'confirmed', 'pended']),
-      where('placedAt', '>=', resetAtTimestamp)
+      where('placedAt', '>=', openedAtTimestamp)
     );
 
     const snapshot = await getDocs(q);
@@ -596,5 +651,32 @@ export const cancelSaleOrder = async (saleOrderNumber: string, customerId: strin
       // Error handled silently
     console.error('매출주문 취소 실패:', error);
     throw error;
+  }
+};
+
+/**
+ * 일일식품 주문 타입별 주문 조회
+ * @param dailyFoodOrderType - 'regular' | 'additional' | 'none'
+ * @returns 주문 목록
+ */
+export const getOrdersByDailyFoodOrderType = async (
+  dailyFoodOrderType: DailyFoodOrderType
+): Promise<SaleOrder[]> => {
+  try {
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where('dailyFoodOrderType', '==', dailyFoodOrderType),
+      where('status', '==', 'confirmed'),
+      orderBy('placedAt', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      ...doc.data(),
+      id: doc.id,
+    })) as unknown as SaleOrder[];
+  } catch (error) {
+    console.error(`일일식품 주문 타입별 조회 실패 (${dailyFoodOrderType}):`, error);
+    throw new Error('일일식품 주문 타입별 조회에 실패했습니다.');
   }
 };

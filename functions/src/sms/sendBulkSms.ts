@@ -45,7 +45,7 @@ export const sendBulkSms = onCall(
       .limit(1)
       .get();
 
-    if (userQuery.empty || userQuery.docs[0].data()?.role !== 'admin') {
+    if (userQuery.empty || !userQuery.docs[0].data()?.roles?.includes('admin')) {
       throw new HttpsError('permission-denied', 'Admin role required');
     }
 

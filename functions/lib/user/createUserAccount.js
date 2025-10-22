@@ -28,7 +28,7 @@ exports.createUserAccount = (0, https_1.onRequest)({
     cors: true,
     maxInstances: 10,
 }, async (request, response) => {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     // CORS 헤더 설정
     response.set('Access-Control-Allow-Origin', '*');
     response.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -64,7 +64,7 @@ exports.createUserAccount = (0, https_1.onRequest)({
         try {
             decodedToken = await auth.verifyIdToken(idToken);
         }
-        catch (_e) {
+        catch (_f) {
             response.set('Access-Control-Allow-Origin', '*');
             response.status(401).json({
                 success: false,
@@ -78,7 +78,7 @@ exports.createUserAccount = (0, https_1.onRequest)({
             .where('authUid', '==', decodedToken.uid)
             .limit(1)
             .get();
-        if (callerQuery.empty || ((_a = callerQuery.docs[0].data()) === null || _a === void 0 ? void 0 : _a.role) !== 'admin') {
+        if (callerQuery.empty || !((_b = (_a = callerQuery.docs[0].data()) === null || _a === void 0 ? void 0 : _a.roles) === null || _b === void 0 ? void 0 : _b.includes('admin'))) {
             response.set('Access-Control-Allow-Origin', '*');
             response.status(403).json({
                 success: false,
@@ -88,11 +88,11 @@ exports.createUserAccount = (0, https_1.onRequest)({
         }
         // 요청 데이터 검증
         const userData = request.body;
-        if (!userData.name || !userData.mobile || !userData.role) {
+        if (!userData.name || !userData.mobile || !userData.roles || userData.roles.length === 0) {
             response.set('Access-Control-Allow-Origin', '*');
             response.status(400).json({
                 success: false,
-                error: 'Missing required fields: name, mobile, role'
+                error: 'Missing required fields: name, mobile, roles'
             });
             return;
         }
@@ -119,7 +119,7 @@ exports.createUserAccount = (0, https_1.onRequest)({
                 email,
                 password: defaultPassword,
                 displayName: userData.name,
-                disabled: !((_b = userData.isActive) !== null && _b !== void 0 ? _b : true)
+                disabled: !((_c = userData.isActive) !== null && _c !== void 0 ? _c : true)
             });
         }
         catch (authError) {
@@ -138,16 +138,20 @@ exports.createUserAccount = (0, https_1.onRequest)({
             authUid: userRecord.uid, // Firebase Auth UID 저장
             name: userData.name,
             mobile: userData.mobile,
-            role: userData.role,
-            isActive: (_c = userData.isActive) !== null && _c !== void 0 ? _c : true,
-            requiresPasswordChange: (_d = userData.requiresPasswordChange) !== null && _d !== void 0 ? _d : true,
+            roles: userData.roles, // 다중 역할 배열 저장
+            isActive: (_d = userData.isActive) !== null && _d !== void 0 ? _d : true,
+            requiresPasswordChange: (_e = userData.requiresPasswordChange) !== null && _e !== void 0 ? _e : true,
             createdAt: firestore_1.FieldValue.serverTimestamp(),
             lastLogin: null,
             passwordChangedAt: null
         };
-        // customer 역할인 경우 linkedCustomers 추가
-        if (userData.role === 'customer') {
+        // customer 역할이 포함된 경우 linkedCustomers 추가
+        if (userData.roles.includes('customer')) {
             userDocData.linkedCustomers = userData.linkedCustomers || [];
+        }
+        // supplier 역할이 포함된 경우 linkedSuppliers 추가
+        if (userData.roles.includes('supplier')) {
+            userDocData.linkedSuppliers = userData.linkedSuppliers || [];
         }
         // 휴대폰번호를 문서 ID로 사용
         await db.collection('users').doc(userData.mobile).set(userDocData);

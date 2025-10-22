@@ -152,7 +152,7 @@ class OrderAggregationService {
   async aggregateByCategory(
     orders: SaleOrder[],
     filter?: AggregationFilter,
-    confirmationDates?: { resetAt: Date | null; lastConfirmedAt: Date | null; isConfirmed?: boolean }
+    confirmationDates?: { openedAt: Date | null; lastConfirmedAt: Date | null; isConfirmed?: boolean }
   ): Promise<{ [category: string]: CategoryAggregation }> {
     // 필터 적용
     let filteredOrders = orders;
@@ -163,19 +163,19 @@ class OrderAggregationService {
     // confirmationStatus 조회 (전달되지 않은 경우)
     let isConfirmed = false;
     if (!confirmationDates) {
-      const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-      const confirmationStatus = await dailyOrderCycleService.getStatus();
+      const { cutoffService } = await import('./cutoffService');
+      const cutoffInfo = await cutoffService.getInfo();
       confirmationDates = {
-        resetAt: confirmationStatus.resetAt,
-        lastConfirmedAt: confirmationStatus.lastConfirmedAt,
-        isConfirmed: confirmationStatus.isConfirmed
+        openedAt: cutoffInfo.openedAt,
+        lastConfirmedAt: null, // 레거시 필드, 사용 안 함
+        isConfirmed: cutoffInfo.status === 'closed'
       };
-      isConfirmed = confirmationStatus.isConfirmed;
+      isConfirmed = cutoffInfo.status === 'closed';
     } else {
       isConfirmed = confirmationDates.isConfirmed || false;
     }
 
-    const { resetAt, lastConfirmedAt } = confirmationDates;
+    const { openedAt, lastConfirmedAt } = confirmationDates;
     const now = new Date();
 
     // 모든 상품 ID 추출
@@ -240,12 +240,12 @@ class OrderAggregationService {
         let isAdditional = false;
 
         if (!isConfirmed) {
-          // 미확정 상태: resetAt 이후 모든 주문이 정규
-          isRegular = (resetAt && placedAt >= resetAt) || false;
+          // 미확정 상태: openedAt 이후 모든 주문이 정규
+          isRegular = (openedAt && placedAt >= openedAt) || false;
         } else {
           // 확정 상태: 정규 + 추가 구분
-          isRegular = (resetAt && lastConfirmedAt &&
-                      placedAt >= resetAt && placedAt < lastConfirmedAt) || false;
+          isRegular = (openedAt && lastConfirmedAt &&
+                      placedAt >= openedAt && placedAt < lastConfirmedAt) || false;
           isAdditional = (lastConfirmedAt && placedAt >= lastConfirmedAt && placedAt < now) || false;
         }
 
@@ -416,29 +416,29 @@ class OrderAggregationService {
    * Active 주문 집계 데이터 생성 (시간 기반 집계) - v0.98
    */
   async getActiveOrderAggregationData(): Promise<OrderAggregationData> {
-    // dailyOrderCycles 조회
-    const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-    const confirmationStatus = await dailyOrderCycleService.getStatus();
+    // dailyFoodCutoff 조회
+    const { cutoffService } = await import('./cutoffService');
+    const cutoffInfo = await cutoffService.getInfo();
 
-    const resetAt = confirmationStatus.resetAt;                  // 리셋 시간 (정규 시작)
-    const lastConfirmedAt = confirmationStatus.lastConfirmedAt;  // 확정 시간 (정규 종료)
-    const isConfirmed = confirmationStatus.isConfirmed;          // 확정 상태
+    const openedAt = cutoffInfo.openedAt;          // 마감 열린 시간 (정규 시작)
+    const lastConfirmedAt = null;                                // 레거시 필드 (사용 안 함)
+    const isConfirmed = cutoffInfo.status === 'closed';  // 마감 상태
     const now = new Date();
 
-    // resetAt 이후의 주문만 조회
-    const orders = await this.getActiveOrdersFromTime(resetAt);
+    // openedAt 이후의 주문만 조회
+    const orders = await this.getActiveOrdersFromTime(openedAt);
 
     // 카테고리별 집계 (confirmationDates 전달)
     const categories = await this.aggregateByCategory(orders, undefined, {
-      resetAt,
+      openedAt,
       lastConfirmedAt,
       isConfirmed
     });
 
     // 시간 기반 통계 계산
     const total: StatusAggregation = {
-      regular: { count: 0, amount: 0, quantity: 0 },      // 정규 주문 (resetAt~lastConfirmedAt)
-      additional: { count: 0, amount: 0, quantity: 0 },    // 추가 주문 (lastConfirmedAt~now)
+      regular: { count: 0, amount: 0, quantity: 0 },      // 정규 주문 (openedAt 이후)
+      additional: { count: 0, amount: 0, quantity: 0 },    // 추가 주문 (사용 안 함)
       pended: { count: 0, amount: 0 },      // 보류 주문
       rejected: { count: 0, amount: 0 }      // 거절 주문
     };
@@ -455,8 +455,8 @@ class OrderAggregationService {
         const placedAt = order.placedAt.toDate();
 
         if (!isConfirmed) {
-          // 미확정 상태: resetAt 이후 모든 주문이 정규만 집계
-          if (resetAt && placedAt >= resetAt) {
+          // 미확정 상태: openedAt 이후 모든 주문이 정규만 집계
+          if (openedAt && placedAt >= openedAt) {
             total.regular.count++;
             total.regular.amount += order.finalAmount;
             // 수량 집계
@@ -467,27 +467,14 @@ class OrderAggregationService {
             }
           }
         } else {
-          // 확정 상태: 정규 + 추가 모두 집계
-          // 정규 주문: resetAt <= placedAt < lastConfirmedAt
-          if (resetAt && lastConfirmedAt &&
-              placedAt >= resetAt && placedAt < lastConfirmedAt) {
+          // 확정 상태: openedAt 이후 모든 주문 집계
+          if (openedAt && placedAt >= openedAt) {
             total.regular.count++;
             total.regular.amount += order.finalAmount;
             // 수량 집계
             if (order.orderItems && Array.isArray(order.orderItems)) {
               order.orderItems.forEach(item => {
                 total.regular.quantity! += item.quantity;
-              });
-            }
-          }
-          // 추가 주문: lastConfirmedAt <= placedAt < now
-          else if (lastConfirmedAt && placedAt >= lastConfirmedAt && placedAt < now) {
-            total.additional.count++;
-            total.additional.amount += order.finalAmount;
-            // 수량 집계
-            if (order.orderItems && Array.isArray(order.orderItems)) {
-              order.orderItems.forEach(item => {
-                total.additional.quantity! += item.quantity;
               });
             }
           }
@@ -550,12 +537,12 @@ class OrderAggregationService {
     totalQuantity: number;
     totalAmount: number;
   }> {
-    // resetAt 이후의 주문만 조회 (시간 기반 집계)
-    const { default: dailyOrderCycleService } = await import('./dailyOrderCycleService');
-    const confirmationStatus = await dailyOrderCycleService.getStatus();
-    const resetAt = confirmationStatus.resetAt || new Date();
+    // openedAt 이후의 주문만 조회 (시간 기반 집계)
+    const { cutoffService } = await import('./cutoffService');
+    const cutoffInfo = await cutoffService.getInfo();
+    const openedAt = cutoffInfo.openedAt || new Date();
 
-    const activeOrders = await this.getActiveOrdersFromTime(resetAt);
+    const activeOrders = await this.getActiveOrdersFromTime(openedAt);
 
     const orderDetails: Array<{
       customerName: string;

@@ -252,7 +252,7 @@ export class CustomerService {
       });
 
       return customers;
-    } catch (error) {
+    } catch {
       // 오류 처리: 고객사 목록 조회 실패
       throw new CompanyServiceError('고객사 목록을 불러올 수 없습니다.', 'FETCH_FAILED');
     }
@@ -290,7 +290,7 @@ export class CustomerService {
 
       const querySnapshot = await getDocs(q);
       return querySnapshot.size;
-    } catch (error) {
+    } catch {
       // 오류 처리: 고객사 개수 조회 실패
       throw new CompanyServiceError('고객사 개수를 불러올 수 없습니다.', 'FETCH_FAILED');
     }
@@ -312,7 +312,7 @@ export class CustomerService {
       }
 
       return null;
-    } catch (error) {
+    } catch {
       throw new CompanyServiceError('고객사 정보를 불러올 수 없습니다.', 'FETCH_FAILED');
     }
   }
@@ -507,7 +507,7 @@ export class CustomerService {
       });
 
       return stats;
-    } catch (error) {
+    } catch {
       throw new CompanyServiceError('고객사 통계를 불러올 수 없습니다.', 'STATS_FAILED');
     }
   }

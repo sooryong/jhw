@@ -7,24 +7,32 @@
 import { useState, useEffect } from 'react';
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
+  DialogActions,
   Typography,
   Box,
-  Chip,
-  IconButton,
   RadioGroup,
   FormControlLabel,
   Radio,
   Snackbar,
   Alert,
-  Button
+  Button,
+  IconButton,
+  Menu,
+  MenuItem,
+  Chip,
+  CircularProgress
 } from '@mui/material';
-import { Close as CloseIcon } from '@mui/icons-material';
+import {
+  MoreVert as MoreVertIcon,
+  Close as CloseIcon
+} from '@mui/icons-material';
 import { DataGrid, type GridColDef, GridFooterContainer, GridPagination } from '@mui/x-data-grid';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import type { SaleOrder } from '../../types/saleOrder';
-import { useAuth } from '../../contexts/AuthContext';
-import { updateSaleOrderStatus } from '../../services/saleOrderService';
+import type { Customer } from '../../types/company';
+import { confirmSaleOrder, updateSaleOrderStatus } from '../../services/saleOrderService';
 
 interface SaleOrderDetailDialogProps {
   open: boolean;
@@ -36,30 +44,53 @@ interface SaleOrderDetailDialogProps {
 const SaleOrderDetailDialog = ({
   open,
   order,
-  onClose,
-  onStatusChanged
+  onClose
 }: SaleOrderDetailDialogProps) => {
-  const { isAdmin, isStaff } = useAuth();
 
-  // 상태 변경
-  const [currentStatus, setCurrentStatus] = useState(order?.status || 'confirmed');
-  const [processing, setProcessing] = useState(false);
+  // 상태 관리
+  const [currentStatus, setCurrentStatus] = useState<SaleOrder['status']>(order?.status || 'placed');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [customer, setCustomer] = useState<Customer | null>(null);
 
-  // order가 변경될 때 currentStatus 동기화
+  // 케밥 메뉴
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+
+  // 상태 변경 모달
+  const [statusChangeModalOpen, setStatusChangeModalOpen] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<'placed' | 'confirmed' | 'pended' | 'rejected'>('placed');
+  const [statusChanging, setStatusChanging] = useState(false);
+
+  // order가 변경될 때 currentStatus 동기화 및 customer 정보 조회
   useEffect(() => {
     if (order) {
       setCurrentStatus(order.status);
+
+      // Customer 정보 조회
+      const fetchCustomer = async () => {
+        try {
+          const customerDoc = await getDoc(doc(db, 'customers', order.customerId));
+          if (customerDoc.exists()) {
+            setCustomer(customerDoc.data() as Customer);
+          }
+        } catch (error) {
+          console.error('Error fetching customer:', error);
+        }
+      };
+
+      fetchCustomer();
     }
   }, [order]);
 
   if (!order) return null;
 
+  // 합계 계산
+  const totalQuantity = order.orderItems.reduce((sum, item) => sum + item.quantity, 0);
+
   // 주문 상품 컬럼 정의
   const orderItemColumns: GridColDef[] = [
     {
       field: 'productName',
-      headerName: '상품명',
+      headerName: `상품명 (${order.itemCount})`,
       flex: 0.35,
       minWidth: 200
     },
@@ -71,7 +102,7 @@ const SaleOrderDetailDialog = ({
     },
     {
       field: 'quantity',
-      headerName: '수량',
+      headerName: `수량 (${totalQuantity.toLocaleString()})`,
       flex: 0.15,
       minWidth: 80,
       align: 'center',
@@ -104,15 +135,8 @@ const SaleOrderDetailDialog = ({
     ...item
   }));
 
-  // 합계 계산
-  const totalQuantity = order.orderItems.reduce((sum, item) => sum + item.quantity, 0);
-
-  // 주문 단계 (정규/추가)
-  const orderPhaseLabel = order.orderPhase === 'regular' ? '정규' : '추가';
-  const orderPhaseColor = order.orderPhase === 'regular' ? 'primary' : 'secondary';
-
-  // 주문 일시 포맷
-  const formatDate = (timestamp: unknown) => {
+  // 짧은 날짜 포맷 (MM/DD HH:MM)
+  const formatDateShort = (timestamp: unknown) => {
     const date = (timestamp as { toDate?: () => Date }).toDate ? (timestamp as { toDate: () => Date }).toDate() : new Date(timestamp as string | number | Date);
     return date.toLocaleString('ko-KR', {
       month: '2-digit',
@@ -123,198 +147,194 @@ const SaleOrderDetailDialog = ({
     });
   };
 
-  // 상태 변경 함수
-  const handleStatusChange = async (newStatus: string) => {
-    if (processing || newStatus === currentStatus) return;
+  // 케밥 메뉴 핸들러
+  const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
 
-    setProcessing(true);
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
 
+  const handleStatusChangeClick = () => {
+    handleMenuClose();
+    // 현재 상태를 선택된 상태로 설정
+    if (currentStatus === 'placed' || currentStatus === 'confirmed' || currentStatus === 'pended' || currentStatus === 'rejected') {
+      setSelectedStatus(currentStatus);
+    } else {
+      setSelectedStatus('placed');
+    }
+    setStatusChangeModalOpen(true);
+  };
+
+  // 상태 변경
+  const handleStatusChange = async () => {
+    if (!order) return;
+    setStatusChanging(true);
     try {
-      await updateSaleOrderStatus(order.saleOrderNumber, newStatus as 'confirmed' | 'pended' | 'rejected');
-      setCurrentStatus(newStatus as 'confirmed' | 'pended' | 'rejected' | 'completed' | 'placed' | 'cancelled');
+      // placed → confirmed 전환 시 재고 확인
+      if (currentStatus === 'placed' && selectedStatus === 'confirmed') {
+        await confirmSaleOrder(order.saleOrderNumber);
+      } else {
+        await updateSaleOrderStatus(order.saleOrderNumber, selectedStatus);
+      }
+
+      // 로컬 상태 업데이트
+      setCurrentStatus(selectedStatus);
 
       const statusMessages: Record<string, string> = {
-        confirmed: '주문이 확정되었습니다.',
-        pended: '주문이 보류되었습니다.',
-        rejected: '주문이 거절되었습니다.'
+        placed: '접수',
+        confirmed: '확정',
+        pended: '보류',
+        rejected: '거절'
       };
 
       setSnackbar({
         open: true,
-        message: statusMessages[newStatus] || '주문 상태가 변경되었습니다.',
+        message: `상태가 ${statusMessages[selectedStatus]}(으)로 변경되었습니다.`,
         severity: 'success'
       });
 
-      // 성공 후 콜백 호출
-      setTimeout(() => {
-        if (onStatusChanged) {
-          onStatusChanged();
-        }
-      }, 500);
+      // 상태 변경 모달만 닫기 (메인 모달은 유지)
+      setStatusChangeModalOpen(false);
     } catch (error) {
-      // Error handled silently
       console.error('상태 변경 실패:', error);
-      setSnackbar({ open: true, message: (error as Error).message || '상태 변경에 실패했습니다.', severity: 'error' });
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : '상태 변경에 실패했습니다.',
+        severity: 'error'
+      });
     } finally {
-      setProcessing(false);
+      setStatusChanging(false);
     }
   };
 
-  // 상태 변경 권한 확인
-  const canChangeStatus = isAdmin() || isStaff();
+  // 상태 칩 표시
+  const getStatusChip = () => {
+    const statusMap: Record<string, { label: string; color: 'default' | 'primary' | 'success' | 'error' | 'warning' }> = {
+      placed: { label: '접수', color: 'default' },
+      confirmed: { label: '확정', color: 'primary' },
+      pended: { label: '보류', color: 'warning' },
+      rejected: { label: '거절', color: 'error' },
+      completed: { label: '완료', color: 'success' }
+    };
+    const status = statusMap[currentStatus] || { label: currentStatus, color: 'default' };
+    return <Chip label={status.label} color={status.color} size="small" />;
+  };
 
-  // 커스텀 DataGrid Footer (페이지네이션 + 닫기 버튼)
+  // 커스텀 DataGrid Footer (페이지네이션만)
   const CustomFooter = () => {
     return (
       <GridFooterContainer>
         <GridPagination />
-        <Button
-          variant="outlined"
-          onClick={onClose}
-          sx={{ mr: 2 }}
-        >
-          닫기
-        </Button>
       </GridFooterContainer>
     );
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="lg"
-      fullWidth
-    >
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h6" component="div">
-            주문 상세: {order.saleOrderNumber}
+    <>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth="md"
+        fullWidth
+      >
+        <Box sx={{
+          fontWeight: 600,
+          bgcolor: 'primary.main',
+          color: 'white',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          p: 2
+        }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: 'white' }}>
+            매출주문 확정 - {order.saleOrderNumber}({formatDateShort(order.placedAt)})
           </Typography>
-          <IconButton onClick={onClose} size="small">
-            <CloseIcon />
-          </IconButton>
+          <Button
+            onClick={onClose}
+            variant="outlined"
+            sx={{
+              color: 'white',
+              borderColor: 'white',
+              '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' }
+            }}
+          >
+            닫기
+          </Button>
         </Box>
-      </DialogTitle>
 
-      <DialogContent dividers>
-        {/* 주문 기본 정보 */}
-        <Box sx={{ mb: 3 }}>
-          <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
-            {/* 좌측: 기본 정보 필드들 */}
-            <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', flex: 1 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  구분
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
-                  <Chip
-                    label={orderPhaseLabel}
-                    color={orderPhaseColor}
-                    size="small"
-                  />
-                </Box>
-              </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  주문번호
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
-                  <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                    {order.saleOrderNumber}
-                  </Typography>
-                </Box>
-              </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        <DialogContent sx={{ pt: 1 }}>
+          {/* 주문 기본 정보 */}
+          <Box sx={{
+            mb: 1,
+            p: 2,
+            bgcolor: 'background.default',
+            borderRadius: 1,
+            position: 'relative'
+          }}>
+            {/* 케밥 메뉴 */}
+            <IconButton
+              onClick={handleMenuClick}
+              sx={{
+                position: 'absolute',
+                top: 8,
+                right: 8
+              }}
+            >
+              <MoreVertIcon />
+            </IconButton>
+            <Menu
+              anchorEl={anchorEl}
+              open={Boolean(anchorEl)}
+              onClose={handleMenuClose}
+            >
+              <MenuItem onClick={handleStatusChangeClick}>상태 변경</MenuItem>
+            </Menu>
+
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <Typography variant="body2" color="text.secondary">
                   고객사
                 </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
-                  <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                    {order.customerInfo.businessName}
-                  </Typography>
-                </Box>
-              </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  주문일시
+                <Typography variant="body1" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                  {order.customerInfo.businessName}
                 </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
-                  <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                    {formatDate(order.placedAt)}
-                  </Typography>
-                </Box>
               </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  상품 종류
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  대표자
                 </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
-                  <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                    {order.itemCount.toLocaleString()}종
-                  </Typography>
-                </Box>
-              </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  총 수량
+                <Typography variant="body1" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                  {customer?.president || '-'}
                 </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
-                  <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                    {totalQuantity.toLocaleString()}개
-                  </Typography>
-                </Box>
               </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  고객 유형
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                  {order.customerInfo.customerType}
+                </Typography>
+              </Box>
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
                   주문금액
                 </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
-                  <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.875rem', color: 'primary.main' }}>
-                    {order.finalAmount.toLocaleString()}원
-                  </Typography>
-                </Box>
+                <Typography variant="body1" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                  {order.finalAmount.toLocaleString()}원
+                </Typography>
               </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
                   상태
                 </Typography>
-                <RadioGroup
-                  row
-                  value={currentStatus}
-                  onChange={(e) => handleStatusChange(e.target.value)}
-                >
-                  <FormControlLabel
-                    value="confirmed"
-                    control={<Radio size="small" />}
-                    label="확정"
-                    disabled={!canChangeStatus || processing}
-                    sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 } }}
-                  />
-                  <FormControlLabel
-                    value="pended"
-                    control={<Radio size="small" />}
-                    label="보류"
-                    disabled={!canChangeStatus || processing}
-                    sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 } }}
-                  />
-                  <FormControlLabel
-                    value="rejected"
-                    control={<Radio size="small" />}
-                    label="거절"
-                    disabled={!canChangeStatus || processing}
-                    sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 } }}
-                  />
-                </RadioGroup>
-                {processing && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                    처리 중...
-                  </Typography>
-                )}
+                <Box sx={{ mt: 0.5 }}>
+                  {getStatusChip()}
+                </Box>
               </Box>
             </Box>
           </Box>
-        </Box>
 
         {/* 주문 상품 목록 */}
         <Box>
@@ -348,22 +368,84 @@ const SaleOrderDetailDialog = ({
         </Box>
       </DialogContent>
 
-      {/* 알림 스낵바 */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={3000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      >
-        <Alert
-          severity={snackbar.severity}
+        {/* 알림 스낵바 */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={3000}
           onClose={() => setSnackbar({ ...snackbar, open: false })}
-          sx={{ width: '100%' }}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
         >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Dialog>
+          <Alert
+            severity={snackbar.severity}
+            onClose={() => setSnackbar({ ...snackbar, open: false })}
+            sx={{ width: '100%' }}
+          >
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+      </Dialog>
+
+      {/* 상태 변경 모달 */}
+      <Dialog
+        open={statusChangeModalOpen}
+        onClose={() => setStatusChangeModalOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 1, borderColor: 'divider' }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            상태 변경
+          </Typography>
+          <IconButton onClick={() => setStatusChangeModalOpen(false)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </Box>
+
+        <DialogContent>
+          <RadioGroup
+            row
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value as 'placed' | 'confirmed' | 'pended' | 'rejected')}
+            sx={{ justifyContent: 'center', gap: 2 }}
+          >
+            <FormControlLabel
+              value="placed"
+              control={<Radio disabled={statusChanging} />}
+              label="접수"
+            />
+            <FormControlLabel
+              value="confirmed"
+              control={<Radio disabled={statusChanging} />}
+              label="확정"
+            />
+            <FormControlLabel
+              value="pended"
+              control={<Radio disabled={statusChanging} />}
+              label="보류"
+            />
+            <FormControlLabel
+              value="rejected"
+              control={<Radio disabled={statusChanging} />}
+              label="거절"
+            />
+          </RadioGroup>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button onClick={() => setStatusChangeModalOpen(false)} variant="outlined" disabled={statusChanging}>
+            취소
+          </Button>
+          <Button
+            onClick={handleStatusChange}
+            variant="contained"
+            disabled={statusChanging}
+            startIcon={statusChanging ? <CircularProgress size={16} /> : null}
+          >
+            {statusChanging ? '변경 중...' : '상태 변경'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
 

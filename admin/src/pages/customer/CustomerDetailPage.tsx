@@ -109,7 +109,7 @@ const CustomerDetailPage: React.FC = () => {
         setCustomerTypesLoading(true);
         const types = await settingsService.getCustomerTypes();
         setCustomerTypes(types);
-      } catch (error) {
+      } catch {
         // 오류 처리: 고객사 유형 로드 실패
       } finally {
         setCustomerTypesLoading(false);
@@ -343,13 +343,13 @@ const CustomerDetailPage: React.FC = () => {
   };
 
   // 폼 검증 (통합 유틸리티 사용)
-  const validateForm = (): boolean => {
+  const validateForm = useCallback((): boolean => {
     if (!formData) return false;
 
     const validationErrors = validateCustomerForm(formData);
     setErrors(validationErrors);
     return !hasValidationErrors(validationErrors);
-  };
+  }, [formData]);
 
   // 저장
   const handleSave = useCallback(async () => {
@@ -419,7 +419,7 @@ const CustomerDetailPage: React.FC = () => {
         setOriginalData(prev => prev ? { ...prev, isActive: newStatus } : null);
       }
 
-    } catch (error) {
+    } catch {
       // 오류 처리: 고객사 상태 변경 실패
 
       // 롤백
@@ -441,7 +441,7 @@ const CustomerDetailPage: React.FC = () => {
     try {
       await customerService.deleteCustomer(businessNumber);
       navigate('/customers');
-    } catch (error) {
+    } catch {
       // 오류 처리: 고객사 삭제 실패
       setSubmitError('고객사 삭제 중 오류가 발생했습니다.');
     } finally {

@@ -21,6 +21,8 @@ import type {
   FormattedMobile,
   FormattedBusinessNumber
 } from '../types/phoneNumber';
+import { customerService } from './customerService';
+import { supplierService } from './supplierService';
 
 
 // Firestore에서 가져온 사용자 문서 타입 (저장된 형태 - 정규화된 번호)
@@ -28,6 +30,8 @@ interface FirestoreUser {
   authUid?: string; // Firebase Auth UID (문서 ID와 별도)
   mobile?: string; // 정규화된 휴대폰번호 (11자리 숫자, 문서 ID와 동일)
   name?: string;
+  roles?: ('admin' | 'staff' | 'customer' | 'supplier')[]; // 다중 역할 지원
+  // 하위 호환성을 위한 role 필드 (deprecated)
   role?: 'admin' | 'staff' | 'customer' | 'supplier';
   linkedCustomers?: string[]; // 연결된 고객사 사업자번호 배열 (정규화)
   linkedSuppliers?: string[]; // 연결된 공급사 사업자번호 배열 (정규화)
@@ -45,11 +49,14 @@ interface FirestoreUser {
  * @returns JWSUser 객체
  */
 const convertFirestoreToJWSUser = (uid: string, userData: FirestoreUser): JWSUser => {
+  // 하위 호환성: role 필드가 있으면 roles로 변환
+  const roles = userData.roles || (userData.role ? [userData.role] : ['staff']);
+
   return {
     uid,
     name: userData.name || '사용자',
     mobile: userData.mobile as NormalizedMobile || '' as NormalizedMobile,
-    role: userData.role || 'staff',
+    roles,
     linkedCustomers: userData.linkedCustomers as NormalizedBusinessNumber[] || [],
     linkedSuppliers: userData.linkedSuppliers as NormalizedBusinessNumber[] || [],
     isActive: userData.isActive ?? true,
@@ -141,12 +148,12 @@ export const findUserByMobileAndRole = async (mobile: string, role: string): Pro
       throw new Error('올바른 휴대폰번호 형식이 아닙니다.');
     }
 
-    // 휴대폰번호 + 역할로 사용자 조회
+    // 휴대폰번호 + 역할로 사용자 조회 (roles 배열에 해당 역할이 포함된 사용자)
     const usersRef = collection(db, 'users');
     const q = query(
       usersRef,
       where('mobile', '==', normalizedMobile),
-      where('role', '==', role)
+      where('roles', 'array-contains', role)
     );
     const querySnapshot = await getDocs(q);
 
@@ -236,7 +243,7 @@ export const getUsers = async (): Promise<JWSUser[]> => {
     });
 
     return users;
-  } catch (error) {
+  } catch {
       // Error handled silently
     throw new Error('사용자 목록 조회 중 오류가 발생했습니다.');
   }
@@ -249,25 +256,31 @@ export const getUsers = async (): Promise<JWSUser[]> => {
  */
 export const createUser = async (userData: Partial<JWSUser>): Promise<{ uid: string; defaultPassword: string }> => {
   try {
-    // supplier 역할인 경우 Firestore에만 저장 (Firebase Auth 사용 안 함)
-    if (userData.role === 'supplier') {
-      const mobile = userData.mobile || '';
-      const defaultPassword = mobile.slice(-4) + mobile.slice(-4); // 뒷자리 4자리 2번 반복
+    const mobile = userData.mobile || '';
+    const defaultPassword = mobile.slice(-4) + mobile.slice(-4); // 뒷자리 4자리 2번 반복
 
-      // 문서 ID를 mobile.role 형식으로 생성 (예: 01012345678.supplier)
-      const docId = `${mobile}.supplier`;
+    // roles가 없으면 기본값
+    const roles = userData.roles || ['staff'];
 
-      // Firestore에 직접 저장
+    // supplier 역할만 있는 경우 Firestore에만 저장 (Firebase Auth 사용 안 함)
+    const hasOnlySupplierRole = roles.length === 1 && roles[0] === 'supplier';
+
+    if (hasOnlySupplierRole) {
+      // 문서 ID는 mobile만 사용 (복합키 제거)
+      const docId = mobile;
+
+      // Firestore에 직접 저장 (primaryRole은 저장하지 않음 - 자동 계산)
       const userDocData: Record<string, unknown> = {
         name: userData.name,
         mobile: mobile,
-        role: 'supplier',
+        roles: roles,
         isActive: userData.isActive ?? true,
-        requiresPasswordChange: false, // supplier는 로그인 안 함
+        requiresPasswordChange: false, // supplier만 있으면 로그인 안 함
         createdAt: serverTimestamp(),
         lastLogin: null,
         passwordChangedAt: null,
-        linkedSuppliers: userData.linkedSuppliers || []
+        linkedSuppliers: userData.linkedSuppliers || [],
+        linkedCustomers: userData.linkedCustomers || []
       };
 
       await setDoc(doc(db, 'users', docId), userDocData);
@@ -278,7 +291,7 @@ export const createUser = async (userData: Partial<JWSUser>): Promise<{ uid: str
       };
     }
 
-    // customer, admin, staff 역할은 Cloud Function 사용
+    // customer, admin, staff 역할이 포함된 경우 Cloud Function 사용
     const user = auth.currentUser;
     if (!user) {
       throw new Error('Authentication required');
@@ -286,19 +299,21 @@ export const createUser = async (userData: Partial<JWSUser>): Promise<{ uid: str
 
     const idToken = await user.getIdToken();
 
-    // Cloud Function이 기대하는 필드만 추출
+    // Cloud Function이 기대하는 필드 추출 (primaryRole은 제외 - 자동 계산)
     const requestData: {
       name: string;
       mobile: string;
-      role: 'admin' | 'staff' | 'customer';
+      roles: ('admin' | 'staff' | 'customer' | 'supplier')[];
       linkedCustomers?: string[];
+      linkedSuppliers?: string[];
       isActive?: boolean;
       requiresPasswordChange?: boolean;
     } = {
       name: userData.name || '',
-      mobile: userData.mobile || '',
-      role: userData.role || 'staff',
+      mobile: mobile,
+      roles: roles,
       linkedCustomers: userData.linkedCustomers,
+      linkedSuppliers: userData.linkedSuppliers,
       isActive: userData.isActive,
       requiresPasswordChange: userData.requiresPasswordChange
     };
@@ -345,8 +360,8 @@ export const updateUser = async (uid: string, updateData: Partial<JWSUser>): Pro
     // Firestore에 저장할 수 있는 필드만 추출
     const firestoreData: Record<string, unknown> = {};
 
-    // Date 타입이 아닌 필드들만 복사
-    const allowedFields = ['name', 'mobile', 'role', 'email', 'isActive',
+    // Date 타입이 아닌 필드들만 복사 (primaryRole은 제외 - 자동 계산)
+    const allowedFields = ['name', 'mobile', 'roles', 'email', 'isActive',
                           'linkedCustomers', 'linkedSuppliers', 'requiresPasswordChange', 'smsRecipientInfo'];
 
     for (const [key, value] of Object.entries(updateData)) {
@@ -379,7 +394,7 @@ export const resetUserPassword = async (uid: string): Promise<void> => {
     if (!data.success) {
       throw new Error(data.error || '비밀번호 초기화에 실패했습니다.');
     }
-  } catch (error) {
+  } catch {
       // Error handled silently
     throw new Error('비밀번호 초기화 중 오류가 발생했습니다.');
   }
@@ -503,7 +518,8 @@ export const createCustomerUser = async (
     const userData: Partial<JWSUser> = {
       name: recipient.name,
       mobile: normalizeNumber(recipient.mobile) as NormalizedMobile,
-      role: 'customer',
+      roles: ['customer'],
+      // primaryRole은 자동 계산되므로 설정하지 않음
       linkedCustomers: businessNumbers.map(bn => normalizeBusinessNumber(bn) as NormalizedBusinessNumber),
       isActive: true, // SMS 수신자는 즉시 활성화
       requiresPasswordChange: true // 첫 로그인 시 비밀번호 변경 필수
@@ -618,19 +634,14 @@ export const getUsersByCustomer = async (businessNumber: string): Promise<JWSUse
     const q = query(
       usersCollection,
       where('linkedCustomers', 'array-contains', businessNumber),
-      where('role', '==', 'customer')
+      where('roles', 'array-contains', 'customer')
     );
 
     const snapshot = await getDocs(q);
-    const users = snapshot.docs.map(doc => ({
-      uid: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      lastLogin: doc.data().lastLogin?.toDate() || null
-    })) as JWSUser[];
+    const users = snapshot.docs.map(doc => convertFirestoreToJWSUser(doc.id, doc.data() as FirestoreUser));
 
     return users.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  } catch (error) {
+  } catch {
       // Error handled silently
     throw new Error('고객사에 연결된 사용자 목록을 조회할 수 없습니다.');
   }
@@ -649,19 +660,14 @@ export const getUsersBySupplier = async (businessNumber: string): Promise<JWSUse
     const q = query(
       usersCollection,
       where('linkedSuppliers', 'array-contains', businessNumber),
-      where('role', '==', 'supplier')
+      where('roles', 'array-contains', 'supplier')
     );
 
     const snapshot = await getDocs(q);
-    const users = snapshot.docs.map(doc => ({
-      uid: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      lastLogin: doc.data().lastLogin?.toDate() || null
-    })) as JWSUser[];
+    const users = snapshot.docs.map(doc => convertFirestoreToJWSUser(doc.id, doc.data() as FirestoreUser));
 
     return users.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  } catch (error) {
+  } catch {
       // Error handled silently
     throw new Error('공급사에 연결된 사용자 목록을 조회할 수 없습니다.');
   }
@@ -676,6 +682,7 @@ export const canDeleteUser = async (userId: string): Promise<{
   canDelete: boolean;
   reason?: string;
   linkedCompaniesCount?: number;
+  linkedCompanies?: string[];
 }> => {
   try {
     const user = await getUserById(userId);
@@ -683,20 +690,59 @@ export const canDeleteUser = async (userId: string): Promise<{
       return { canDelete: false, reason: '사용자를 찾을 수 없습니다.' };
     }
 
-    const linkedCustomersCount = user.linkedCustomers?.length || 0;
-    const linkedSuppliersCount = user.linkedSuppliers?.length || 0;
-    const totalLinkedCount = linkedCustomersCount + linkedSuppliersCount;
+    // 실제 존재하는 고객사/공급사만 확인
+    const existingCustomers: string[] = [];
+    const existingSuppliers: string[] = [];
 
-    // 연결된 고객사나 공급사가 있으면 삭제 불가
-    if (totalLinkedCount > 0) {
+    // 연결된 고객사 중 실제 존재하는 것만 필터링
+    if (user.linkedCustomers && user.linkedCustomers.length > 0) {
+      for (const businessNumber of user.linkedCustomers) {
+        try {
+          const customer = await customerService.getCustomer(businessNumber);
+          if (customer) {
+            existingCustomers.push(customer.businessName);
+          }
+        } catch {
+          // 고객사가 존재하지 않으면 무시
+        }
+      }
+    }
+
+    // 연결된 공급사 중 실제 존재하는 것만 필터링
+    if (user.linkedSuppliers && user.linkedSuppliers.length > 0) {
+      for (const businessNumber of user.linkedSuppliers) {
+        try {
+          const supplier = await supplierService.getSupplierById(businessNumber);
+          if (supplier) {
+            existingSuppliers.push(supplier.businessName);
+          }
+        } catch {
+          // 공급사가 존재하지 않으면 무시
+        }
+      }
+    }
+
+    const totalExistingCount = existingCustomers.length + existingSuppliers.length;
+
+    // 실제 존재하는 회사가 있으면 삭제 불가
+    if (totalExistingCount > 0) {
       const reasons = [];
-      if (linkedCustomersCount > 0) reasons.push(`${linkedCustomersCount}개의 고객사`);
-      if (linkedSuppliersCount > 0) reasons.push(`${linkedSuppliersCount}개의 공급사`);
+      const allCompanies = [];
+
+      if (existingCustomers.length > 0) {
+        reasons.push(`${existingCustomers.length}개의 고객사`);
+        allCompanies.push(...existingCustomers);
+      }
+      if (existingSuppliers.length > 0) {
+        reasons.push(`${existingSuppliers.length}개의 공급사`);
+        allCompanies.push(...existingSuppliers);
+      }
 
       return {
         canDelete: false,
-        reason: `연결된 ${reasons.join(', ')}가 있습니다.`,
-        linkedCompaniesCount: totalLinkedCount
+        reason: `연결된 ${reasons.join(', ')}가 있습니다: ${allCompanies.join(', ')}`,
+        linkedCompaniesCount: totalExistingCount,
+        linkedCompanies: allCompanies
       };
     }
 

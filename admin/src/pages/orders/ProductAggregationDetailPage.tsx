@@ -26,7 +26,7 @@ import {
   Category as CategoryIcon,
   Warning as WarningIcon
 } from '@mui/icons-material';
-import orderAggregationService from '../../services/orderAggregationService';
+import dailyFoodPurchaseAggregationService from '../../services/dailyFoodPurchaseAggregationService';
 import type { OrderAggregationData } from '../../types/orderAggregation';
 import ProductOrderDetailDialog from '../../components/orders/ProductOrderDetailDialog';
 
@@ -63,7 +63,7 @@ const ProductAggregationByStatusPage = () => {
     setError(null);
 
     try {
-      const data = await orderAggregationService.getActiveOrderAggregationData();
+      const data = await dailyFoodPurchaseAggregationService.getActiveOrderAggregationData();
       setAggregationData(data);
     } catch (err) {
       console.error('Error loading aggregation data:', err);

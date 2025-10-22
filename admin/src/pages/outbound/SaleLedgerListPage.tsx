@@ -266,8 +266,8 @@ const SaleLedgerListPage = () => {
         if (selectedCustomerId) {
           paymentData = await getCustomerCollections(selectedCustomerId, start, end);
         }
-      } catch (paymentError) {
-        console.warn('결재 내역 조회 실패, 빈 배열로 처리:', paymentError);
+      } catch {
+        // 결재 내역 조회 실패 시 빈 배열로 처리
       }
 
       setPayments(paymentData);
@@ -359,7 +359,7 @@ const SaleLedgerListPage = () => {
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <LedgerIcon sx={{ fontSize: 40, mr: 2, color: 'primary.main' }} />
           <Typography variant="h4" component="h1">
-            고객사 원장 관리
+            매출원장 관리
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>

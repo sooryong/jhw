@@ -151,7 +151,7 @@ export const getAllRecipients = async (): Promise<SMSRecipient[]> => {
       const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
       return dateB.getTime() - dateA.getTime();
     });
-  } catch (error) {
+  } catch {
       // Error handled silently
     // 오류 처리: 수신자 목록 조회 실패
     throw new Error('수신자 목록을 불러올 수 없습니다.');
@@ -183,7 +183,7 @@ export const getRecipientByPhone = async (phone: string): Promise<SMSRecipient |
       createdAt: doc.data().createdAt?.toDate(),
       updatedAt: doc.data().updatedAt?.toDate()
     } as SMSRecipient;
-  } catch (error) {
+  } catch {
       // Error handled silently
     // 오류 처리: 수신자 조회 실패
     return null;
@@ -215,7 +215,7 @@ export const getRecipientsByCompany = async (companyId: string): Promise<SMSReci
       const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
       return dateB.getTime() - dateA.getTime();
     });
-  } catch (error) {
+  } catch {
       // Error handled silently
     // 오류 처리: 회사별 수신자 조회 실패
     throw new Error('회사별 수신자 목록을 불러올 수 없습니다.');
@@ -247,7 +247,7 @@ export const getRecipientsByType = async (customerType: string): Promise<SMSReci
       const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
       return dateB.getTime() - dateA.getTime();
     });
-  } catch (error) {
+  } catch {
       // Error handled silently
     // 오류 처리: 고객 유형별 수신자 조회 실패
     throw new Error('고객 유형별 수신자 목록을 불러올 수 없습니다.');
@@ -266,7 +266,7 @@ export const getRecipientsCount = async (): Promise<number> => {
 
     const snapshot = await getDocs(q);
     return snapshot.size;
-  } catch (error) {
+  } catch {
       // Error handled silently
     // 오류 처리: 수신자 수 조회 실패
     return 0;
@@ -289,7 +289,7 @@ export const searchRecipients = async (searchTerm: string): Promise<SMSRecipient
       recipient.companyName?.toLowerCase().includes(lowerSearchTerm) ||
       recipient.customerType?.toLowerCase().includes(lowerSearchTerm)
     );
-  } catch (error) {
+  } catch {
       // Error handled silently
     // 오류 처리: 수신자 검색 실패
     throw new Error('수신자 검색에 실패했습니다.');

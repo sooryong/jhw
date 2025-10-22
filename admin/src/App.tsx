@@ -19,6 +19,7 @@ import AppRouter from './router/AppRouter';
 
 // 컨텍스트
 import { AuthProvider } from './contexts/AuthContextProvider';
+import { SaleOrderProvider } from './contexts/SaleOrderContext';
 
 const App: React.FC = () => {
   return (
@@ -31,9 +32,11 @@ const App: React.FC = () => {
         dense
       >
         <AuthProvider>
-          <BrowserRouter>
-            <AppRouter />
-          </BrowserRouter>
+          <SaleOrderProvider>
+            <BrowserRouter>
+              <AppRouter />
+            </BrowserRouter>
+          </SaleOrderProvider>
         </AuthProvider>
       </SnackbarProvider>
     </ThemeProvider>

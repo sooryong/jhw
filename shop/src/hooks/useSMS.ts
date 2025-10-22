@@ -234,7 +234,7 @@ export const useSms = () => {
     orderNumber: string,
     onSuccess?: (messageId: string) => void
   ) => {
-    const message = `[JWS] ${customerName}님, 주문이 확인되었습니다. 주문번호: ${orderNumber}. 빠른 처리를 위해 노력하겠습니다.`;
+    const message = `[JHW] ${customerName}님, 주문이 확인되었습니다. 주문번호: ${orderNumber}. 빠른 처리를 위해 노력하겠습니다.`;
     return await sendQuickSMS(phoneNumber, message, onSuccess);
   }, [sendQuickSMS]);
 
@@ -244,7 +244,7 @@ export const useSms = () => {
     trackingNumber: string,
     onSuccess?: (messageId: string) => void
   ) => {
-    const message = `[JWS] ${customerName}님, 상품이 출하되었습니다. 운송장번호: ${trackingNumber}. 배송조회는 택배사 홈페이지에서 확인하세요.`;
+    const message = `[JHW] ${customerName}님, 상품이 출하되었습니다. 운송장번호: ${trackingNumber}. 배송조회는 택배사 홈페이지에서 확인하세요.`;
     return await sendQuickSMS(phoneNumber, message, onSuccess);
   }, [sendQuickSMS]);
 
@@ -254,7 +254,7 @@ export const useSms = () => {
     amount: number,
     onSuccess?: (messageId: string) => void
   ) => {
-    const message = `[JWS] ${customerName}님, 결제가 완료되었습니다. 결제금액: ${amount.toLocaleString()}원. 이용해 주셔서 감사합니다.`;
+    const message = `[JHW] ${customerName}님, 결제가 완료되었습니다. 결제금액: ${amount.toLocaleString()}원. 이용해 주셔서 감사합니다.`;
     return await sendQuickSMS(phoneNumber, message, onSuccess);
   }, [sendQuickSMS]);
 

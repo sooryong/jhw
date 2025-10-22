@@ -50,7 +50,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           };
         }
       }
-    } catch (error) {
+    } catch {
       // Error handled silently
       // Error reading cache
     }
@@ -72,7 +72,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         localStorage.removeItem(USER_CACHE_KEY);
         localStorage.removeItem(USER_CACHE_TIME_KEY);
       }
-    } catch (error) {
+    } catch {
       // Error handled silently
       // Error writing cache
     }
@@ -87,8 +87,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const jwsUser = await getUserByAuthUid(firebaseUser.uid);
 
           if (jwsUser) {
-            // SMS 수신자 정보 추가 조회 (customer 역할인 경우)
-            if (jwsUser.role === 'customer') {
+            // SMS 수신자 정보 추가 조회 (customer 역할이 포함된 경우)
+            if (jwsUser.roles.includes('customer')) {
               try {
                 const smsResult = await customerLinkService.findCustomersBySMSRecipient(jwsUser.mobile);
                 if (smsResult) {
@@ -100,6 +100,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                     name: smsResult.name,
                     linkedCustomerNumbers: smsResult.linkedCustomers.map(c => c.businessNumber as NormalizedBusinessNumber),
                     recipientRole: primaryLink.recipientRole,
+                    customerRole: primaryLink.customerRole || 'member',
+                    notificationPreferences: {
+                      receiveOrderNotifications: true,
+                      receivePaymentNotifications: true,
+                      receivePromotionNotifications: true
+                    }
                   };
                 }
               } catch (error) {
@@ -113,7 +119,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // Firestore에 사용자 정보가 없으면 로그아웃 처리
             try {
               await signOut(auth);
-            } catch (error) {
+            } catch {
       // Error handled silently
               // 로그아웃 오류는 조용히 처리
             }
@@ -123,7 +129,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // 로그인된 사용자가 없는 경우
           updateUserWithCache(null);
         }
-      } catch (error) {
+      } catch {
       // Error handled silently
         // 인증 상태 확인 오류는 조용히 처리
         updateUserWithCache(null);
@@ -176,19 +182,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error('비활성화된 계정입니다.\n\n관리자에게 문의하세요.');
       }
 
-      // 역할 확인 (admin, staff만 허용)
-      if (jwsUser.role === 'customer') {
+      // 역할 확인 (admin, staff, customer+supplier 허용)
+      const hasAdminOrStaffRole = jwsUser.roles.includes('admin') || jwsUser.roles.includes('staff');
+      const hasCustomerRole = jwsUser.roles.includes('customer');
+      const hasSupplierRole = jwsUser.roles.includes('supplier');
+      const hasOnlyCustomerRole = hasCustomerRole && !hasAdminOrStaffRole && !hasSupplierRole;
+      const hasOnlySupplierRole = hasSupplierRole && !hasAdminOrStaffRole && !hasCustomerRole;
+
+      // customer만 있는 경우 차단
+      if (hasOnlyCustomerRole) {
         await signOut(auth);
         throw new Error('이 플랫폼은 관리자 및 직원 전용입니다.\n\n고객 로그인은 쇼핑몰을 이용해주세요.');
       }
 
-      if (jwsUser.role === 'supplier') {
+      // supplier만 있는 경우 차단
+      if (hasOnlySupplierRole) {
         await signOut(auth);
         throw new Error('공급사 담당자는 현재 로그인이 제한되어 있습니다.\n\n문의사항은 관리자에게 연락해주세요.');
       }
 
-      // SMS 수신자 정보 추가 조회 (customer 역할인 경우)
-      if (jwsUser.role === 'customer') {
+      // SMS 수신자 정보 추가 조회 (customer 역할이 포함된 경우)
+      if (jwsUser.roles.includes('customer')) {
         try {
           const smsResult = await customerLinkService.findCustomersBySMSRecipient(jwsUser.mobile);
           if (smsResult) {
@@ -200,6 +214,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               name: smsResult.name,
               linkedCustomerNumbers: smsResult.linkedCustomers.map(c => c.businessNumber as NormalizedBusinessNumber),
               recipientRole: primaryLink.recipientRole,
+              customerRole: primaryLink.customerRole || 'member',
+              notificationPreferences: {
+                receiveOrderNotifications: true,
+                receivePaymentNotifications: true,
+                receivePromotionNotifications: true
+              }
             };
           }
         } catch (error) {
@@ -228,38 +248,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     updateUserWithCache(null);
   };
 
-  // 역할 확인 메서드
+  // 역할 확인 메서드 (다중 역할 지원)
   const isAdmin = (): boolean => {
-    return user?.role === 'admin';
+    return user?.roles?.includes('admin') || false;
   };
 
   const isStaff = (): boolean => {
-    return user?.role === 'staff';
+    return user?.roles?.includes('staff') || false;
   };
 
   const isCustomer = (): boolean => {
-    return user?.role === 'customer';
+    return user?.roles?.includes('customer') || false;
   };
 
-  // 세분화된 권한 확인 메서드
+  // 세분화된 권한 확인 메서드 (다중 역할 지원)
   const hasPermission = (permission: Permission): boolean => {
     if (!user) return false;
-    return rbac.hasPermission(user.role, permission);
+    return rbac.hasPermissionMultiRole(user.roles, permission);
   };
 
   const hasAnyPermission = (permissions: Permission[]): boolean => {
     if (!user) return false;
-    return rbac.hasAnyPermission(user.role, permissions);
+    return rbac.hasAnyPermissionMultiRole(user.roles, permissions);
   };
 
   const hasAllPermissions = (permissions: Permission[]): boolean => {
     if (!user) return false;
-    return rbac.hasAllPermissions(user.role, permissions);
+    return rbac.hasAllPermissionsMultiRole(user.roles, permissions);
   };
 
   const canAccessPath = (path: string): boolean => {
     if (!user) return false;
-    return rbac.canAccessPath(user.role, path);
+    return rbac.canAccessPathMultiRole(user.roles, path);
   };
 
   // 사용자 정보 새로고침
@@ -271,8 +291,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const jwsUser = await getUserByAuthUid(currentUser.uid);
 
         if (jwsUser) {
-          // SMS 수신자 정보 추가 조회 (customer 역할인 경우)
-          if (jwsUser.role === 'customer') {
+          // SMS 수신자 정보 추가 조회 (customer 역할이 포함된 경우)
+          if (jwsUser.roles.includes('customer')) {
             try {
               const smsResult = await customerLinkService.findCustomersBySMSRecipient(jwsUser.mobile);
               if (smsResult) {
@@ -284,6 +304,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                   name: smsResult.name,
                   linkedCustomerNumbers: smsResult.linkedCustomers.map(c => c.businessNumber as NormalizedBusinessNumber),
                   recipientRole: primaryLink.recipientRole,
+                  customerRole: primaryLink.customerRole || 'member',
+                  notificationPreferences: {
+                    receiveOrderNotifications: true,
+                    receivePaymentNotifications: true,
+                    receivePromotionNotifications: true
+                  }
                 };
               }
             } catch (error) {
@@ -295,7 +321,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           updateUserWithCache(jwsUser);
         }
       }
-    } catch (error) {
+    } catch {
       // Error handled silently
       // 사용자 정보 새로고침 오류는 조용히 처리
     } finally {

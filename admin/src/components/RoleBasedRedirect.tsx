@@ -8,6 +8,16 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Box, CircularProgress } from '@mui/material';
+import type { UserRole } from '../types/user';
+
+// 역할 우선순위 계산 (admin > staff > customer > supplier)
+const getPrimaryRole = (roles: UserRole[]): UserRole => {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('staff')) return 'staff';
+  if (roles.includes('customer')) return 'customer';
+  if (roles.includes('supplier')) return 'supplier';
+  return 'staff'; // 기본값
+};
 
 const RoleBasedRedirect: React.FC = () => {
   const { user, loading } = useAuth();
@@ -33,11 +43,13 @@ const RoleBasedRedirect: React.FC = () => {
     return <Navigate to="/login" replace />;
   }
 
-  // 역할별 리다이렉트
-  switch (user.role) {
+  // 역할별 리다이렉트 (우선순위 기반)
+  const primaryRole = getPrimaryRole(user.roles);
+
+  switch (primaryRole) {
     case 'admin':
     case 'staff':
-      return <Navigate to="/dashboard" replace />;
+      return <Navigate to="/orders/sale-order-status" replace />;
     case 'customer':
     default:
       // customer는 플랫폼 접근 불가 - 로그인 페이지로

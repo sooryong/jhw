@@ -104,7 +104,7 @@ const CustomerSelector: React.FC<CustomerSelectorProps> = ({
     onClose();
   };
 
-  if (!user || user.role !== 'customer') {
+  if (!user || !user.roles.includes('customer')) {
     return null;
   }
 

@@ -10,7 +10,6 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import LoginPage from '../pages/auth/LoginPage';
 import ChangePasswordPage from '../pages/auth/ChangePasswordPage';
-import DashboardPage from '../pages/dashboard/DashboardPage';
 import SystemManagementPage from '../pages/system/SystemManagementPage';
 import SMSCenterPage from '../pages/sms/SMSCenterPage';
 import CustomerListPage from '../pages/customer/CustomerListPage';
@@ -24,22 +23,25 @@ import ProductAddPage from '../pages/product/ProductAddPage';
 import ProductDetailPage from '../pages/product/ProductDetailPage';
 import UserSettings from '../pages/user/UserSettings';
 import UserChangePasswordPage from '../pages/user/UserChangePasswordPage';
-// 일일주문 확정 시스템
-import DailyOrderConfirmationPage from '../pages/orders/DailyOrderConfirmationPage';
-import DailyFoodPurchaseOrderPage from '../pages/orders/DailyFoodPurchaseOrderPage';
+// 매출주문 및 일일식품 발주 시스템
+import SaleOrderStatusPage from '../pages/orders/SaleOrderStatusPage';
+import DailyFoodCutoffSettingsPage from '../pages/orders/DailyFoodCutoffSettingsPage';
+import DailyFoodPurchaseAggregationPage from '../pages/orders/DailyFoodPurchaseAggregationPage';
+import DailyFoodPurchaseOrdersPage from '../pages/orders/DailyFoodPurchaseOrdersPage';
 
 // 공통 페이지 (변경 없음)
-import CustomerOrderListPage from '../pages/orders/CustomerOrderListPage';
-import ProductAggregationPage from '../pages/orders/ProductAggregationPage';
+import SaleOrderManagementPage from '../pages/orders/SaleOrderManagementPage';
+import DailyFoodCustomerOrdersPage from '../pages/orders/DailyFoodCustomerOrdersPage';
+import SaleProductAggregationPage from '../pages/orders/SaleProductAggregationPage';
 import ProductAggregationDetailPage from '../pages/orders/ProductAggregationDetailPage';
-import DailyOrderInboundPage from '../pages/inbound/DailyOrderInboundPage';
-import DailyOrderInboundInspectionPage from '../pages/inbound/DailyOrderInboundInspectionPage';
-import DailyOrderInboundPrintView from '../pages/inbound/DailyOrderInboundPrintView';
-import SupplierLedgerManagementPage from '../pages/inbound/SupplierLedgerManagementPage';
+import InboundManagementPage from '../pages/inbound/InboundManagementPage';
+import InboundInspectionPage from '../pages/inbound/InboundInspectionPage';
+import InboundPrintView from '../pages/inbound/InboundPrintView';
+import PurchaseLedgerManagementPage from '../pages/inbound/PurchaseLedgerManagementPage';
 import PurchaseLedgerDetailPage from '../pages/inbound/PurchaseLedgerDetailPage';
-import DailyOrderOutboundPage from '../pages/outbound/DailyOrderOutboundPage';
-import DailyOrderOutboundInspectionPage from '../pages/outbound/DailyOrderOutboundInspectionPage';
-import DailyOrderOutboundPrintView from '../pages/outbound/DailyOrderOutboundPrintView';
+import OutboundManagementPage from '../pages/outbound/OutboundManagementPage';
+import OutboundInspectionPage from '../pages/outbound/OutboundInspectionPage';
+import OutboundPrintView from '../pages/outbound/OutboundPrintView';
 import SaleLedgerListPage from '../pages/outbound/SaleLedgerListPage';
 import SaleLedgerDetailPage from '../pages/outbound/SaleLedgerDetailPage';
 import AccountLedgerPage from '../pages/account/AccountLedgerPage';
@@ -80,46 +82,58 @@ const AppRouter: React.FC = () => {
       <Route path="/change-password" element={<ChangePasswordPage />} />
 
       {/* 보호된 라우트들 - MainLayout으로 래핑 (관리자/직원 전용) */}
+      {/* 매출주문 접수 */}
       <Route
-        path="/dashboard"
+        path="/orders/sale-order-status"
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DashboardPage />
+              <SaleOrderStatusPage />
             </MainLayout>
           </ProtectedRoute>
         }
       />
 
-      {/* 일일주문 확정 */}
+      {/* 일일식품 발주 */}
       <Route
-        path="/orders/management"
+        path="/orders/daily-food-cutoff-settings"
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DailyOrderConfirmationPage />
-            </MainLayout>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
-        path="/orders/customer-orders"
-        element={
-          <ProtectedRoute allowedRoles={['admin', 'staff']}>
-            <MainLayout>
-              <CustomerOrderListPage />
+              <DailyFoodCutoffSettingsPage />
             </MainLayout>
           </ProtectedRoute>
         }
       />
 
       <Route
-        path="/orders/product-aggregation"
+        path="/orders/sale-order-management"
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <ProductAggregationPage />
+              <SaleOrderManagementPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/orders/daily-food-orders"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <DailyFoodCustomerOrdersPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/orders/sale-aggregation"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <SaleProductAggregationPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -136,13 +150,25 @@ const AppRouter: React.FC = () => {
         }
       />
 
-      {/* 일일식품 매입주문 확인 */}
+      {/* 일일식품 매입 집계 */}
+      <Route
+        path="/orders/daily-food-purchase-aggregation"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'staff']}>
+            <MainLayout>
+              <DailyFoodPurchaseAggregationPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 일일식품 매입 발주 */}
       <Route
         path="/orders/daily-food-purchase-orders"
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DailyFoodPurchaseOrderPage />
+              <DailyFoodPurchaseOrdersPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -154,7 +180,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DailyOrderInboundPage />
+              <InboundManagementPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -165,7 +191,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DailyOrderInboundInspectionPage />
+              <InboundInspectionPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -176,7 +202,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DailyOrderInboundPrintView />
+              <InboundPrintView />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -192,13 +218,13 @@ const AppRouter: React.FC = () => {
         }
       />
 
-      {/* 공급사 원장 관리 */}
+      {/* 매입원장 관리 */}
       <Route
         path="/ledgers/purchase"
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <SupplierLedgerManagementPage />
+              <PurchaseLedgerManagementPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -258,7 +284,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DailyOrderOutboundPage />
+              <OutboundManagementPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -269,7 +295,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DailyOrderOutboundInspectionPage />
+              <OutboundInspectionPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -280,7 +306,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <DailyOrderOutboundPrintView />
+              <OutboundPrintView />
             </MainLayout>
           </ProtectedRoute>
         }

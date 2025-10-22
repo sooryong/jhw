@@ -26,7 +26,7 @@ import {
   KeyboardArrowUp as KeyboardArrowUpIcon
 } from '@mui/icons-material';
 import { format } from 'date-fns';
-import orderAggregationService from '../../services/orderAggregationService';
+import dailyFoodPurchaseAggregationService from '../../services/dailyFoodPurchaseAggregationService';
 import type { SaleOrder } from '../../types/saleOrder';
 import { formatCurrency } from '../../utils/formatUtils';
 
@@ -46,7 +46,7 @@ const SaleOrderTable = ({ date, statusFilter }: SaleOrderTableProps) => {
   const loadOrders = useCallback(async () => {
     setLoading(true);
     try {
-      const allOrders = await orderAggregationService.getSaleOrdersByDate(date);
+      const allOrders = await dailyFoodPurchaseAggregationService.getSaleOrdersByDate(date);
 
       // 상태 필터 적용
       const filtered =
@@ -106,28 +106,6 @@ const SaleOrderTable = ({ date, statusFilter }: SaleOrderTableProps) => {
     }
   };
 
-  const getConfirmationStatusLabel = (confirmationStatus?: string) => {
-    switch (confirmationStatus) {
-      case 'regular':
-        return '정규';
-      case 'additional':
-        return '추가';
-      default:
-        return '-';
-    }
-  };
-
-  const getConfirmationStatusColor = (confirmationStatus?: string): 'default' | 'primary' | 'secondary' => {
-    switch (confirmationStatus) {
-      case 'regular':
-        return 'primary';
-      case 'additional':
-        return 'secondary';
-      default:
-        return 'default';
-    }
-  };
-
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -158,9 +136,6 @@ const SaleOrderTable = ({ date, statusFilter }: SaleOrderTableProps) => {
               </TableCell>
               <TableCell align="right" sx={{ fontWeight: 600 }}>
                 주문금액
-              </TableCell>
-              <TableCell align="center" sx={{ fontWeight: 600 }}>
-                구분
               </TableCell>
               <TableCell align="center" sx={{ fontWeight: 600 }}>
                 상태
@@ -201,14 +176,6 @@ const SaleOrderTable = ({ date, statusFilter }: SaleOrderTableProps) => {
                   <TableCell align="right">{formatCurrency(order.finalAmount)}</TableCell>
                   <TableCell align="center">
                     <Chip
-                      label={getConfirmationStatusLabel(order.orderPhase)}
-                      color={getConfirmationStatusColor(order.orderPhase)}
-                      size="small"
-                      variant="outlined"
-                    />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Chip
                       label={getStatusLabel(order.status)}
                       color={getStatusColor(order.status)}
                       size="small"
@@ -226,7 +193,7 @@ const SaleOrderTable = ({ date, statusFilter }: SaleOrderTableProps) => {
 
                 {/* 상세 행 */}
                 <TableRow>
-                  <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
+                  <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
                     <Collapse in={expandedRow === order.saleOrderNumber} timeout="auto" unmountOnExit>
                       <Box sx={{ margin: 2 }}>
                         <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>

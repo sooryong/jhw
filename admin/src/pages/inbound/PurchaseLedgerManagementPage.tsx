@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/inbound/SupplierLedgerManagementPage.tsx
+ * 파일 경로: /src/pages/inbound/PurchaseLedgerManagementPage.tsx
  * 작성 날짜: 2025-10-17
- * 주요 내용: 공급사 원장 관리 페이지
+ * 주요 내용: 매입원장 관리 페이지
  */
 
 import { useState, useEffect } from 'react';
@@ -84,7 +84,7 @@ interface LedgerTransaction {
   notes?: string; // 적요 (지급 시에만 사용)
 }
 
-const SupplierLedgerManagementPage = () => {
+const PurchaseLedgerManagementPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
@@ -267,8 +267,8 @@ const SupplierLedgerManagementPage = () => {
         if (selectedSupplierId) {
           paymentData = await getSupplierPayouts(selectedSupplierId, start, end);
         }
-      } catch (paymentError) {
-        console.warn('결재 내역 조회 실패, 빈 배열로 처리:', paymentError);
+      } catch {
+        // 결재 내역 조회 실패 시 빈 배열로 처리
       }
 
       setPayments(paymentData);
@@ -361,7 +361,7 @@ const SupplierLedgerManagementPage = () => {
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <LedgerIcon sx={{ fontSize: 40, mr: 2, color: 'primary.main' }} />
           <Typography variant="h4" component="h1">
-            공급사 원장 관리
+            매입원장 관리
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -431,7 +431,7 @@ const SupplierLedgerManagementPage = () => {
                   </Box>
                   <Box>
                     <Typography variant="caption" color="text.secondary">대표자</Typography>
-                    <Typography variant="body2" fontWeight="medium">{selectedSupplier.ownerName}</Typography>
+                    <Typography variant="body2" fontWeight="medium">{selectedSupplier.president}</Typography>
                   </Box>
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="caption" color="text.secondary">주소</Typography>
@@ -789,4 +789,4 @@ const SupplierLedgerManagementPage = () => {
   );
 };
 
-export default SupplierLedgerManagementPage;
+export default PurchaseLedgerManagementPage;

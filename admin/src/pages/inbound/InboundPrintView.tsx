@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/inbound/DailyOrderInboundPrintView.tsx
- * 작성 날짜: 2025-10-06
- * 주요 내용: 일일주문 입고 검수표 인쇄 뷰 (A4 세로)
+ * 파일 경로: /src/pages/inbound/InboundPrintView.tsx
+ * 작성 날짜: 2025-10-18
+ * 주요 내용: 입고 검수표 인쇄 뷰 (A4 세로)
  */
 
 import { useState, useEffect } from 'react';
@@ -30,7 +30,7 @@ import { format } from 'date-fns';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
-const DailyOrderInboundPrintView = () => {
+const InboundPrintView = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
 
@@ -166,7 +166,7 @@ const DailyOrderInboundPrintView = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <PrintIcon sx={{ fontSize: 28, color: 'primary.main' }} />
             <Typography variant="h5" component="h1">
-              일일주문 입고 검수표 인쇄
+              입고 검수표 인쇄
             </Typography>
           </Box>
         </Box>
@@ -272,7 +272,7 @@ const DailyOrderInboundPrintView = () => {
                     fontSize: { xs: '1.5rem', print: '1.75rem' }
                   }}
                 >
-                  일일주문 입고 검수표
+                  입고 검수표
                 </Typography>
               </Box>
 
@@ -600,4 +600,4 @@ const DailyOrderInboundPrintView = () => {
   );
 };
 
-export default DailyOrderInboundPrintView;
+export default InboundPrintView;
