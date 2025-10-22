@@ -210,9 +210,22 @@ const PurchaseOrderEditDialog = ({
         result.success
       );
 
+      // SMS 발송 성공 시 상태를 'confirmed'로 변경
+      if (result.success) {
+        await purchaseOrderService.updatePurchaseOrderStatus(
+          purchaseOrder.purchaseOrderNumber,
+          'confirmed'
+        );
+
+        // 로컬 상태도 업데이트
+        setCurrentStatus('confirmed');
+      }
+
       setSnackbar({
         open: true,
-        message: `SMS 발송 완료 (성공: ${result.successCount}명, 실패: ${result.failureCount}명)`,
+        message: result.success
+          ? `SMS 발송 완료 및 상태 확정됨 (성공: ${result.successCount}명, 실패: ${result.failureCount}명)`
+          : `SMS 발송 실패 (성공: ${result.successCount}명, 실패: ${result.failureCount}명)`,
         severity: result.success ? 'success' : 'error'
       });
 
@@ -351,29 +364,27 @@ const PurchaseOrderEditDialog = ({
     });
   };
 
-  // SMS 결과 표시
+  // SMS 결과 표시 (3가지 상태: 미발송/성공/실패)
   const getSmsResultChip = () => {
     // SMS 재전송 결과가 있으면 우선 표시
     const hasResults = smsResults.primary || smsResults.secondary;
     if (hasResults) {
-      const allSuccess = (!smsResults.primary || smsResults.primary.status === 'success') &&
-                         (!smsResults.secondary || smsResults.secondary.status === 'success');
-      const allFailed = (smsResults.primary?.status === 'failed') &&
-                        (smsResults.secondary?.status === 'failed');
-      const anySuccess = smsResults.primary?.status === 'success' || smsResults.secondary?.status === 'success';
+      const anySuccess = smsResults.primary?.status === 'success' ||
+                         smsResults.secondary?.status === 'success';
+      const allFailed = (smsResults.primary?.status === 'failed' || !smsResults.primary) &&
+                        (smsResults.secondary?.status === 'failed' || !smsResults.secondary);
 
-      if (allSuccess && (smsResults.primary || smsResults.secondary)) {
-        return <Chip label="발송완료" color="success" size="small" />;
-      } else if (allFailed) {
-        return <Chip label="발송실패" color="error" size="small" />;
-      } else if (anySuccess) {
-        return <Chip label="부분성공" color="warning" size="small" />;
+      // 1명이라도 성공하면 '성공'
+      if (anySuccess) {
+        return <Chip label="성공" color="success" size="small" />;
+      } else if (allFailed && (smsResults.primary || smsResults.secondary)) {
+        return <Chip label="실패" color="error" size="small" />;
       }
     }
 
     // 기본: purchaseOrder의 status 기반
     if (purchaseOrder.status === 'confirmed') {
-      return <Chip label="발송완료" color="success" size="small" />;
+      return <Chip label="성공" color="success" size="small" />;
     }
     return <Chip label="미발송" color="default" size="small" />;
   };
