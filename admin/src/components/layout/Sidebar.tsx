@@ -171,13 +171,13 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
           ],
         },
         {
-          text: '매입 입고',
+          text: '매입주문 입고',
           icon: <MoveToInbox />,
           path: '/orders/inbound',
           implemented: true,
         },
         {
-          text: '매출 출하',
+          text: '매출주문 출하',
           icon: <LocalShipping />,
           path: '/orders/outbound',
           implemented: true,
