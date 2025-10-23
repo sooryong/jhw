@@ -12,7 +12,6 @@ import {
   Box,
   Paper,
   Button,
-  Chip,
   CircularProgress,
   Alert
 } from '@mui/material';
@@ -24,7 +23,6 @@ import {
   Refresh as RefreshIcon
 } from '@mui/icons-material';
 import type { PurchaseOrder } from '../../types/purchaseOrder';
-import { getPurchaseOrderStatusLabel, getPurchaseOrderStatusColor } from '../../types/purchaseOrder';
 import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { openPrintCenter } from '../../utils/printUtils';
@@ -118,24 +116,6 @@ const InboundListPage = () => {
       )
     },
     {
-      field: 'status',
-      headerName: '상태',
-      flex: 0.10,
-      align: 'center',
-      headerAlign: 'center',
-      sortable: true,
-      renderCell: (params) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-          <Chip
-            label={getPurchaseOrderStatusLabel(params.value)}
-            size="small"
-            color={getPurchaseOrderStatusColor(params.value)}
-            variant="outlined"
-          />
-        </Box>
-      )
-    },
-    {
       field: 'supplierName',
       headerName: '공급사',
       flex: 0.25,
@@ -158,7 +138,7 @@ const InboundListPage = () => {
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
           <Typography variant="body2" color="text.secondary">
-            {params.value}종
+            {params.value}
           </Typography>
         </Box>
       )
@@ -173,7 +153,7 @@ const InboundListPage = () => {
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
           <Typography variant="body2" color="text.secondary">
-            {params.value.toLocaleString()}개
+            {params.value.toLocaleString()}
           </Typography>
         </Box>
       )
@@ -231,6 +211,16 @@ const InboundListPage = () => {
     }
   ];
 
+  // 합계 계산
+  const totalProductTypes = purchaseOrders.reduce(
+    (sum, order) => sum + order.orderItems.length,
+    0
+  );
+  const totalQuantity = purchaseOrders.reduce(
+    (sum, order) => sum + order.orderItems.reduce((itemSum, item) => itemSum + item.quantity, 0),
+    0
+  );
+
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
       {/* 헤더 */}
@@ -240,6 +230,11 @@ const InboundListPage = () => {
           <Typography variant="h4" component="h1">
             매입 입고
           </Typography>
+          {!loading && purchaseOrders.length > 0 && (
+            <Typography variant="h6" component="span" color="text.secondary" sx={{ ml: 2 }}>
+              (상품 종류: {totalProductTypes} / 수량: {totalQuantity.toLocaleString()})
+            </Typography>
+          )}
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
