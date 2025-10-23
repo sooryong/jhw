@@ -26,14 +26,14 @@ import {
   Delete as DeleteIcon
 } from '@mui/icons-material';
 import type { DocumentType, DocumentRenderer, PrintDocument } from './types';
-import { InboundInspectionRenderer } from './renderers/InboundInspectionRenderer';
-import { OutboundInspectionRenderer } from './renderers/OutboundInspectionRenderer';
+import { InboundPrintRenderer } from './renderers/InboundPrintRenderer';
+import { OutboundPrintRenderer } from './renderers/OutboundPrintRenderer';
 import { SaleSlipRenderer } from './renderers/SaleSlipRenderer';
 
 // 렌더러 레지스트리
 const rendererRegistry = new Map<DocumentType, DocumentRenderer<unknown>>([
-  ['inbound-inspection', InboundInspectionRenderer as DocumentRenderer<unknown>],
-  ['outbound-inspection', OutboundInspectionRenderer as DocumentRenderer<unknown>],
+  ['inbound-inspection', InboundPrintRenderer as DocumentRenderer<unknown>],
+  ['outbound-inspection', OutboundPrintRenderer as DocumentRenderer<unknown>],
   ['sale-slip', SaleSlipRenderer as DocumentRenderer<unknown>]
   // 향후 추가: ['outbound-shipment', OutboundShipmentRenderer],
   // 향후 추가: ['order-receipt', OrderReceiptRenderer],

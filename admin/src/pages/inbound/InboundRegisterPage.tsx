@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/inbound/InboundInspectionPage.tsx
+ * 파일 경로: /src/pages/inbound/InboundRegisterPage.tsx
  * 작성 날짜: 2025-10-18
- * 주요 내용: 입고 검수 페이지
+ * 주요 내용: 매입 입고 등록 페이지
  */
 
 import { useState, useEffect } from 'react';
@@ -39,7 +39,7 @@ import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firesto
 import { db } from '../../config/firebase';
 import QuickProductAddDialog from '../../components/inbound/QuickProductAddDialog';
 
-const InboundInspectionPage = () => {
+const InboundRegisterPage = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -407,7 +407,7 @@ const InboundInspectionPage = () => {
           </IconButton>
           <PlaylistAddIcon sx={{ fontSize: 32, color: 'primary.main' }} />
           <Typography variant="h4" component="h1">
-            매입주문 입고 등록
+            매입 입고 등록
           </Typography>
         </Box>
         <Button
@@ -746,4 +746,4 @@ const InboundInspectionPage = () => {
   );
 };
 
-export default InboundInspectionPage;
+export default InboundRegisterPage;

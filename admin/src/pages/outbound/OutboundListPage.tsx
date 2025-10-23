@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/outbound/OutboundManagementPage.tsx
+ * 파일 경로: /src/pages/outbound/OutboundListPage.tsx
  * 작성 날짜: 2025-10-18
- * 주요 내용: 출하 관리 메인 페이지
+ * 주요 내용: 매출 출하 목록 페이지
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -36,7 +36,7 @@ import { openPrintCenter } from '../../utils/printUtils';
 // import timeRangeService from '../../services/timeRangeService';
 import { useSaleOrderContext } from '../../contexts/SaleOrderContext';
 
-const OutboundManagementPage = () => {
+const OutboundListPage = () => {
   const navigate = useNavigate();
   const { cutoffInfo } = useSaleOrderContext();
   const [loading, setLoading] = useState(true);
@@ -381,7 +381,7 @@ const OutboundManagementPage = () => {
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <OutboundIcon sx={{ fontSize: 40, mr: 2, color: 'primary.main' }} />
           <Typography variant="h4" component="h1">
-            매출주문 출하
+            매출 출하
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -576,4 +576,4 @@ const OutboundManagementPage = () => {
   );
 };
 
-export default OutboundManagementPage;
+export default OutboundListPage;

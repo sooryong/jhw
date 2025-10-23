@@ -1,7 +1,7 @@
 /**
- * 파일 경로: /src/pages/inbound/InboundManagementPage.tsx
+ * 파일 경로: /src/pages/inbound/InboundListPage.tsx
  * 작성 날짜: 2025-10-18
- * 주요 내용: 입고 관리 메인 페이지
+ * 주요 내용: 매입 입고 목록 페이지
  */
 
 import { useState, useEffect } from 'react';
@@ -29,7 +29,7 @@ import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebas
 import { db } from '../../config/firebase';
 import { openPrintCenter } from '../../utils/printUtils';
 
-const InboundManagementPage = () => {
+const InboundListPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -238,7 +238,7 @@ const InboundManagementPage = () => {
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <InboundIcon sx={{ fontSize: 40, mr: 2, color: 'primary.main' }} />
           <Typography variant="h4" component="h1">
-            매입주문 입고
+            매입 입고
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -320,4 +320,4 @@ const InboundManagementPage = () => {
   );
 };
 
-export default InboundManagementPage;
+export default InboundListPage;

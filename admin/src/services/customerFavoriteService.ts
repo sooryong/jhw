@@ -18,8 +18,7 @@ import {
   orderBy,
   limit,
   Timestamp,
-  writeBatch,
-  runTransaction
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type {

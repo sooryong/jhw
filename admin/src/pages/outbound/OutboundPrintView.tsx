@@ -1,7 +1,7 @@
 /**
 * 파일 경로: /src/pages/outbound/OutboundPrintView.tsx
 * 작성 날짜: 2025-10-18
-* 주요 내용: 출하 검수표 인쇄 뷰
+* 주요 내용: 매출 출하 검수표 인쇄 뷰
  */
 
 import { useEffect, useState } from 'react';
@@ -82,7 +82,7 @@ const OutboundPrintView = () => {
       {/* 헤더 */}
       <Box sx={{ mb: 4, textAlign: 'center' }}>
         <Typography variant="h4" gutterBottom>
-          출하 검수서
+          매출 출하 검수표
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
           {new Date().toLocaleDateString('ko-KR')}

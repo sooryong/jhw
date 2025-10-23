@@ -1,33 +1,39 @@
 /**
- * 파일 경로: /src/components/print/renderers/InboundInspectionRenderer.tsx
- * 작성 날짜: 2025-10-09
- * 주요 내용: 입고 검수표 렌더러
+ * 파일 경로: /src/components/print/renderers/OutboundPrintRenderer.tsx
+ * 작성 날짜: 2025-10-16
+ * 주요 내용: 매출 출하 인쇄 렌더러
  */
 
 import type { ReactNode } from 'react';
 import { Typography, Box } from '@mui/material';
 import { format } from 'date-fns';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
-import { purchaseOrderService } from '../../../services/purchaseOrderService';
-import type { PurchaseOrder, PurchaseOrderItem } from '../../../types/purchaseOrder';
+import type { SaleOrder, OrderItem } from '../../../types/saleOrder';
 import type { Product } from '../../../types/product';
 import type { DocumentRenderer } from '../types';
 
-interface InboundInspectionData {
-  order: PurchaseOrder;
-  items: (PurchaseOrderItem & { category?: string })[];
+interface OutboundPrintData {
+  order: SaleOrder;
+  items: (OrderItem & { category?: string })[];
 }
 
-class InboundInspectionRendererClass implements DocumentRenderer<InboundInspectionData> {
-  type = 'inbound-inspection' as const;
+class OutboundPrintRendererClass implements DocumentRenderer<OutboundPrintData> {
+  type = 'outbound-inspection' as const;
 
-  async loadDocument(id: string): Promise<InboundInspectionData> {
-    const order = await purchaseOrderService.getPurchaseOrderById(id);
+  async loadDocument(id: string): Promise<OutboundPrintData> {
+    // saleOrderNumber로 매출주문 조회
+    const q = query(
+      collection(db, 'saleOrders'),
+      where('saleOrderNumber', '==', id)
+    );
+    const snapshot = await getDocs(q);
 
-    if (!order) {
-      throw new Error(`매입주문 ${id}를 찾을 수 없습니다.`);
+    if (snapshot.empty) {
+      throw new Error(`매출주문 ${id}를 찾을 수 없습니다.`);
     }
+
+    const order = snapshot.docs[0].data() as SaleOrder;
 
     // 각 상품의 카테고리 조회
     const itemsPromises = order.orderItems.map(async (item) => {
@@ -54,19 +60,19 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
     return { order, items };
   }
 
-  chunkPages(data: InboundInspectionData): unknown[][] {
+  chunkPages(data: OutboundPrintData): unknown[][] {
     const ITEMS_PER_PAGE = 17;
-    const chunks: (PurchaseOrderItem & { category?: string })[][] = [];
+    const chunks: (OrderItem & { category?: string })[][] = [];
 
     for (let i = 0; i < data.items.length; i += ITEMS_PER_PAGE) {
-      const chunk: (PurchaseOrderItem & { category?: string })[] = data.items.slice(
+      const chunk: (OrderItem & { category?: string })[] = data.items.slice(
         i,
         i + ITEMS_PER_PAGE
       );
 
       // 17개 미만이면 undefined로 채워서 17개로 만듦
       while (chunk.length < ITEMS_PER_PAGE) {
-        chunk.push(undefined as unknown as PurchaseOrderItem & { category?: string });
+        chunk.push(undefined as unknown as OrderItem & { category?: string });
       }
       chunks.push(chunk);
     }
@@ -80,14 +86,14 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
   }
 
   renderPage(
-    data: InboundInspectionData,
+    data: OutboundPrintData,
     chunk: unknown[],
     pageIndex: number,
     totalPages: number,
     key: string,
     id?: string
   ): ReactNode {
-    const typedChunk = chunk as (PurchaseOrderItem & { category?: string })[];
+    const typedChunk = chunk as (OrderItem & { category?: string })[];
     const currentPage = pageIndex + 1;
 
     return (
@@ -132,7 +138,7 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
           {/* 제목 */}
           <Box sx={{ mb: 3, textAlign: 'center' }}>
             <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-              매입주문 입고 검수표
+              매출 출하 검수표
             </Typography>
           </Box>
 
@@ -149,10 +155,10 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: 1, borderBottom: 1, borderColor: 'divider', p: 1, minHeight: 50 }}>
               <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                매입주문:
+                매출주문:
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '0.875rem', fontWeight: 'bold', textAlign: 'right' }}>
-                {data.order.purchaseOrderNumber}
+                {data.order.saleOrderNumber}
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: 1, borderBottom: 1, borderColor: 'divider', p: 1, minHeight: 50 }}>
@@ -176,20 +182,20 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
                   color: data.order.status === 'completed' ? 'success.main' : 'primary.main'
                 }}
               >
-                {data.order.status === 'completed' ? '입고완료' : '확정'}
+                {data.order.status === 'completed' ? '출하완료' : '확정'}
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: 1, borderColor: 'divider', p: 1, minHeight: 50 }}>
               <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                공급사:
+                고객사:
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '0.875rem', fontWeight: 'bold', textAlign: 'right' }}>
-                {data.order.supplierInfo.businessName}
+                {data.order.customerInfo.businessName}
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: 1, borderColor: 'divider', p: 1, minHeight: 50 }}>
               <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                검수일:
+                출하일:
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '0.875rem', fontWeight: 'bold', textAlign: 'right' }}>
                 {format(new Date(), 'yyyy-MM-dd')}
@@ -211,7 +217,7 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: '12% 1fr 18% 8% 12% 12%',
+                gridTemplateColumns: '12% 1fr 18% 12% 15%',
                 bgcolor: 'grey.100',
                 borderBottom: 1,
                 borderColor: 'divider'
@@ -237,14 +243,9 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
                   수량
                 </Typography>
               </Box>
-              <Box sx={{ p: 1, borderRight: 1, borderColor: 'divider', textAlign: 'center' }}>
-                <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>
-                  단가
-                </Typography>
-              </Box>
               <Box sx={{ p: 1, textAlign: 'center' }}>
                 <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>
-                  검수 확인
+                  피킹 수량
                 </Typography>
               </Box>
             </Box>
@@ -255,7 +256,7 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
                 key={idx}
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: '12% 1fr 18% 8% 12% 12%',
+                  gridTemplateColumns: '12% 1fr 18% 12% 15%',
                   borderBottom: idx < chunk.length - 1 ? 1 : 0,
                   borderColor: 'divider',
                   minHeight: 40
@@ -281,7 +282,6 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
                     {item?.quantity || ''}
                   </Typography>
                 </Box>
-                <Box sx={{ p: 1, borderRight: 1, borderColor: 'divider', bgcolor: 'grey.50' }} />
                 <Box sx={{ p: 1, bgcolor: 'grey.50' }} />
               </Box>
             ))}
@@ -312,7 +312,7 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
             </Box>
             <Box sx={{ width: '50%', display: 'flex', alignItems: 'center', gap: 1, pl: 1 }}>
               <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                입고 수량:
+                피킹 수량:
               </Typography>
               <Box sx={{ flex: 1, borderBottom: 1, borderColor: 'divider', height: 24 }} />
             </Box>
@@ -322,13 +322,13 @@ class InboundInspectionRendererClass implements DocumentRenderer<InboundInspecti
     );
   }
 
-  getTitle(data: InboundInspectionData): string {
-    return data.order.purchaseOrderNumber;
+  getTitle(data: OutboundPrintData): string {
+    return data.order.saleOrderNumber;
   }
 
-  getSummary(data: InboundInspectionData): string {
-    return `${data.order.supplierInfo.businessName} • ${data.items.length}품목`;
+  getSummary(data: OutboundPrintData): string {
+    return `${data.order.customerInfo.businessName} • ${data.items.length}품목`;
   }
 }
 
-export const InboundInspectionRenderer = new InboundInspectionRendererClass();
+export const OutboundPrintRenderer = new OutboundPrintRendererClass();

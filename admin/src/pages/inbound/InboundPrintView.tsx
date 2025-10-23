@@ -1,7 +1,7 @@
 /**
  * 파일 경로: /src/pages/inbound/InboundPrintView.tsx
  * 작성 날짜: 2025-10-18
- * 주요 내용: 입고 검수표 인쇄 뷰 (A4 세로)
+ * 주요 내용: 매입 입고 검수표 인쇄 뷰 (A4 세로)
  */
 
 import { useState, useEffect } from 'react';
@@ -166,7 +166,7 @@ const InboundPrintView = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <PrintIcon sx={{ fontSize: 28, color: 'primary.main' }} />
             <Typography variant="h5" component="h1">
-              입고 검수표 인쇄
+              매입 입고 검수표 인쇄
             </Typography>
           </Box>
         </Box>
@@ -272,7 +272,7 @@ const InboundPrintView = () => {
                     fontSize: { xs: '1.5rem', print: '1.75rem' }
                   }}
                 >
-                  입고 검수표
+                  매입 입고 검수표
                 </Typography>
               </Box>
 

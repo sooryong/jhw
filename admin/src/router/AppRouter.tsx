@@ -34,13 +34,13 @@ import SaleOrderManagementPage from '../pages/orders/SaleOrderManagementPage';
 import DailyFoodCustomerOrdersPage from '../pages/orders/DailyFoodCustomerOrdersPage';
 import SaleProductAggregationPage from '../pages/orders/SaleProductAggregationPage';
 import ProductAggregationDetailPage from '../pages/orders/ProductAggregationDetailPage';
-import InboundManagementPage from '../pages/inbound/InboundManagementPage';
-import InboundInspectionPage from '../pages/inbound/InboundInspectionPage';
+import InboundListPage from '../pages/inbound/InboundListPage';
+import InboundRegisterPage from '../pages/inbound/InboundRegisterPage';
 import InboundPrintView from '../pages/inbound/InboundPrintView';
 import PurchaseLedgerManagementPage from '../pages/inbound/PurchaseLedgerManagementPage';
 import PurchaseLedgerDetailPage from '../pages/inbound/PurchaseLedgerDetailPage';
-import OutboundManagementPage from '../pages/outbound/OutboundManagementPage';
-import OutboundInspectionPage from '../pages/outbound/OutboundInspectionPage';
+import OutboundListPage from '../pages/outbound/OutboundListPage';
+import OutboundRegisterPage from '../pages/outbound/OutboundRegisterPage';
 import OutboundPrintView from '../pages/outbound/OutboundPrintView';
 import SaleLedgerListPage from '../pages/outbound/SaleLedgerListPage';
 import SaleLedgerDetailPage from '../pages/outbound/SaleLedgerDetailPage';
@@ -180,7 +180,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <InboundManagementPage />
+              <InboundListPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -191,7 +191,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <InboundInspectionPage />
+              <InboundRegisterPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -284,7 +284,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <OutboundManagementPage />
+              <OutboundListPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -295,7 +295,7 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin', 'staff']}>
             <MainLayout>
-              <OutboundInspectionPage />
+              <OutboundRegisterPage />
             </MainLayout>
           </ProtectedRoute>
         }

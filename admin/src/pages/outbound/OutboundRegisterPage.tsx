@@ -1,7 +1,7 @@
 /**
-* 파일 경로: /src/pages/outbound/OutboundInspectionPage.tsx
+* 파일 경로: /src/pages/outbound/OutboundRegisterPage.tsx
 * 작성 날짜: 2025-10-18
-* 주요 내용: 출하 검수 페이지
+* 주요 내용: 매출 출하 등록 페이지
  */
 
 import { useState, useEffect } from 'react';
@@ -40,7 +40,7 @@ import { db } from '../../config/firebase';
 import QuickProductAddDialog from '../../components/inbound/QuickProductAddDialog';
 import { openPrintCenter } from '../../utils/printUtils';
 
-const OutboundInspectionPage = () => {
+const OutboundRegisterPage = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -396,7 +396,7 @@ const OutboundInspectionPage = () => {
           </IconButton>
           <ShippingIcon sx={{ fontSize: 32, color: 'primary.main' }} />
           <Typography variant="h4" component="h1">
-            매출주문 출하 등록
+            매출 출하 등록
           </Typography>
         </Box>
         <Button
@@ -717,4 +717,4 @@ const OutboundInspectionPage = () => {
   );
 };
 
-export default OutboundInspectionPage;
+export default OutboundRegisterPage;
